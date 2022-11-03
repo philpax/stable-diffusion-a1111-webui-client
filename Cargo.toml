@@ -1,0 +1,2 @@
+[workspace]
+members = ["sdui-client", "sdui-lib"]

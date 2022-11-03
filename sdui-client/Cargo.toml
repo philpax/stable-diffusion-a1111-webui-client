@@ -1,0 +1,10 @@
+[package]
+edition = "2021"
+name = "sdui-client"
+version = "0.1.0"
+
+[dependencies]
+anyhow = "1.0.66"
+clap = { version = "4.0.18", features = ["derive"] }
+stable-diffusion-a1111-webui-client = {path = "../sdui-lib"}
+tokio = { version = "1.21.2", features = ["full"] }
