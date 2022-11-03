@@ -1,20 +1,27 @@
 use std::collections::HashMap;
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
+
+pub use image::DynamicImage;
 
 #[derive(Error, Debug)]
 pub enum ClientError {
     #[error("invalid url; make sure it starts with http")]
     InvalidUrl,
-    #[error("reqwest error")]
-    ReqwestError(#[from] reqwest::Error),
-    #[error("serde json error")]
-    SerdeJsonError(#[from] serde_json::Error),
     #[error("Not authenticated")]
     NotAuthenticated,
     #[error("invalid response body (expected {expected:?})")]
     InvalidResponse { expected: String },
+
+    #[error("reqwest error")]
+    ReqwestError(#[from] reqwest::Error),
+    #[error("serde json error")]
+    SerdeJsonError(#[from] serde_json::Error),
+    #[error("base64 decode error")]
+    Base64DecodeError(#[from] base64::DecodeError),
+    #[error("image error")]
+    ImageError(#[from] image::ImageError),
 }
 impl ClientError {
     fn invalid_response(expected: &str) -> Self {
@@ -84,6 +91,27 @@ impl Config {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GenerationInfo {
+    #[serde(rename = "all_prompts")]
+    pub prompts: Vec<String>,
+    pub negative_prompt: String,
+    #[serde(rename = "all_seeds")]
+    pub seeds: Vec<u64>,
+    #[serde(rename = "all_subseeds")]
+    pub subseeds: Vec<u64>,
+    pub subseed_strength: u32,
+    pub width: u32,
+    pub height: u32,
+    pub sampler: String,
+    pub steps: usize,
+}
+
+pub struct GenerationResult {
+    pub images: Vec<DynamicImage>,
+    pub info: GenerationInfo,
+}
+
 pub struct Client {
     url: String,
     client: reqwest::Client,
@@ -141,7 +169,7 @@ impl Client {
                 .json(body)
                 .send()
                 .await?
-                .json()
+                .text()
                 .await?,
         )
     }
@@ -182,6 +210,29 @@ impl Client {
                 })
                 .collect(),
         ))
+    }
+
+    pub async fn generate_image_from_text(&self, prompt: &str) -> Result<GenerationResult> {
+        #[derive(Serialize)]
+        struct Request<'a> {
+            prompt: &'a str,
+        }
+
+        #[derive(Deserialize)]
+        struct Response {
+            images: Vec<String>,
+            info: String,
+        }
+
+        let response: Response = self.post("sdapi/v1/txt2img", &Request { prompt }).await?;
+        Ok(GenerationResult {
+            images: response
+                .images
+                .iter()
+                .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
+                .collect::<Result<Vec<_>>>()?,
+            info: serde_json::from_str(&response.info)?,
+        })
     }
 }
 
