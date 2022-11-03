@@ -25,7 +25,11 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    println!("{:#?}", client.checkpoints().await?);
+    let config = client.config().await?;
+    println!("checkpoints: {:?}", config.checkpoints()?);
+    println!("embeddings: {:?}", config.embeddings()?);
+    println!("hypernetwork: {:?}", config.hypernetwork()?);
+    println!("txt2img_samplers: {:?}", config.txt2img_samplers()?);
 
     Ok(())
 }

@@ -31,8 +31,57 @@ pub enum ConfigComponent {
         choices: Vec<String>,
         id: String,
         label: String,
-        value: String,
     },
+    Radio {
+        choices: Vec<String>,
+        id: String,
+        label: String,
+    },
+}
+
+#[derive(Debug)]
+pub struct Config(HashMap<u32, ConfigComponent>);
+impl Config {
+    pub fn checkpoints(&self) -> Result<Vec<String>> {
+        self.get_dropdown("setting_sd_model_checkpoint")
+    }
+    pub fn embeddings(&self) -> Result<Vec<String>> {
+        self.get_dropdown("train_embedding")
+    }
+    pub fn hypernetwork(&self) -> Result<Vec<String>> {
+        self.get_dropdown("setting_sd_hypernetwork")
+    }
+    pub fn txt2img_samplers(&self) -> Result<Vec<String>> {
+        self.get_radio("txt2img_sampling")
+    }
+
+    fn values(&self) -> impl Iterator<Item = &ConfigComponent> {
+        self.0.values()
+    }
+    fn get_dropdown(&self, target_id: &str) -> Result<Vec<String>> {
+        self.values()
+            .find_map(|comp| match comp {
+                ConfigComponent::Dropdown { id, choices, .. } if id == target_id => {
+                    Some(choices.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                ClientError::invalid_response(&format!("no {target_id} dropdown component"))
+            })
+    }
+    fn get_radio(&self, target_id: &str) -> Result<Vec<String>> {
+        self.values()
+            .find_map(|comp| match comp {
+                ConfigComponent::Radio { id, choices, .. } if id == target_id => {
+                    Some(choices.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                ClientError::invalid_response(&format!("no {target_id} radio component"))
+            })
+    }
 }
 
 pub struct Client {
@@ -97,54 +146,51 @@ impl Client {
         )
     }
 
-    pub async fn config(&self) -> Result<HashMap<u32, ConfigComponent>> {
+    pub async fn config(&self) -> Result<Config> {
         let components: HashMap<String, serde_json::Value> = self.get("config").await?;
-        Ok(components
-            .get("components")
-            .ok_or_else(|| ClientError::invalid_response("components"))?
-            .as_array()
-            .ok_or_else(|| ClientError::invalid_response("components to be an array"))?
-            .into_iter()
-            .filter_map(|v| v.as_object())
-            .filter_map(|o| {
-                let id = o.get("id")?.as_u64()? as u32;
-                let comp_type = o.get("type")?.as_str()?;
-                let props = o.get("props")?.as_object()?;
-                match comp_type {
-                    "dropdown" => Some((
-                        id,
-                        ConfigComponent::Dropdown {
-                            choices: props
-                                .get("choices")?
-                                .as_array()?
-                                .into_iter()
-                                .flat_map(|s| Some(s.as_str()?.to_owned()))
-                                .collect(),
-                            id: props.get("elem_id")?.as_str()?.to_owned(),
-                            label: props.get("label")?.as_str()?.to_owned(),
-                            value: props.get("value")?.as_str()?.to_owned(),
-                        },
-                    )),
-                    _ => None,
-                }
-            })
-            .collect())
+        Ok(Config(
+            components
+                .get("components")
+                .ok_or_else(|| ClientError::invalid_response("components"))?
+                .as_array()
+                .ok_or_else(|| ClientError::invalid_response("components to be an array"))?
+                .into_iter()
+                .filter_map(|v| v.as_object())
+                .filter_map(|o| {
+                    let id = o.get("id")?.as_u64()? as u32;
+                    let comp_type = o.get("type")?.as_str()?;
+                    let props = o.get("props")?.as_object()?;
+                    match comp_type {
+                        "dropdown" => Some((
+                            id,
+                            ConfigComponent::Dropdown {
+                                choices: extract_string_array(props.get("choices")?)?,
+                                id: props.get("elem_id")?.as_str()?.to_owned(),
+                                label: props.get("label")?.as_str()?.to_owned(),
+                            },
+                        )),
+                        "radio" => Some((
+                            id,
+                            ConfigComponent::Radio {
+                                choices: extract_string_array(props.get("choices")?)?,
+                                id: props.get("elem_id")?.as_str()?.to_owned(),
+                                label: props.get("label")?.as_str()?.to_owned(),
+                            },
+                        )),
+                        _ => None,
+                    }
+                })
+                .collect(),
+        ))
     }
+}
 
-    pub async fn checkpoints(&self) -> Result<Vec<String>> {
-        self.config()
-            .await?
-            .into_values()
-            .find_map(|comp| match comp {
-                ConfigComponent::Dropdown { id, choices, .. }
-                    if id == "setting_sd_model_checkpoint" =>
-                {
-                    Some(choices)
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                ClientError::invalid_response("no setting_sd_model_checkpoint component")
-            })
-    }
+fn extract_string_array(value: &serde_json::Value) -> Option<Vec<String>> {
+    Some(
+        value
+            .as_array()?
+            .into_iter()
+            .flat_map(|s| Some(s.as_str()?.to_owned()))
+            .collect(),
+    )
 }
