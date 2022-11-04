@@ -102,8 +102,65 @@ impl Client {
         let client = self.client.clone();
         let handle = tokio::task::spawn(async move {
             #[derive(Serialize)]
-            struct Request {
-                prompt: String,
+            struct Request<'a> {
+                batch_size: i32,
+                cfg_scale: f32,
+                denoising_strength: f32,
+                enable_hr: bool,
+                eta: f32,
+                firstphase_height: u32,
+                firstphase_width: u32,
+                height: u32,
+                n_iter: u32,
+                negative_prompt: &'a str,
+                prompt: &'a str,
+                restore_faces: bool,
+                s_churn: f32,
+                s_noise: f32,
+                s_tmax: f32,
+                s_tmin: f32,
+                sampler_index: &'a str,
+                seed: i32,
+                seed_resize_from_h: i32,
+                seed_resize_from_w: i32,
+                steps: u32,
+                styles: Vec<String>,
+                subseed: i32,
+                subseed_strength: f32,
+                tiling: bool,
+                width: u32,
+            }
+            impl<'a> Default for Request<'a> {
+                fn default() -> Self {
+                    Self {
+                        enable_hr: false,
+                        denoising_strength: 0.0,
+                        firstphase_width: 0,
+                        firstphase_height: 0,
+                        prompt: "",
+                        styles: vec![],
+                        seed: -1,
+                        subseed: -1,
+                        subseed_strength: 0.0,
+                        seed_resize_from_h: -1,
+                        seed_resize_from_w: -1,
+                        batch_size: 1,
+                        n_iter: 1,
+                        steps: 50,
+                        cfg_scale: 7.0,
+                        width: 512,
+                        height: 512,
+                        restore_faces: false,
+                        tiling: false,
+                        negative_prompt: "",
+                        eta: 0.0,
+                        s_churn: 0.0,
+                        s_tmax: 0.0,
+                        s_tmin: 0.0,
+                        s_noise: 1.0,
+                        sampler_index: "Euler",
+                    }
+                }
             }
 
             #[derive(Deserialize)]
@@ -118,14 +175,22 @@ impl Client {
                 negative_prompt: String,
                 all_seeds: Vec<u64>,
                 all_subseeds: Vec<u64>,
-                subseed_strength: u32,
+                subseed_strength: f32,
                 width: u32,
                 height: u32,
                 sampler: String,
                 steps: usize,
             }
 
-            let response: Response = client.post("sdapi/v1/txt2img", &Request { prompt }).await?;
+            let response: Response = client
+                .post(
+                    "sdapi/v1/txt2img",
+                    &Request {
+                        prompt: &prompt,
+                        ..Default::default()
+                    },
+                )
+                .await?;
 
             let images = response
                 .images
@@ -220,7 +285,7 @@ pub struct GenerationInfo {
     pub negative_prompt: String,
     pub seeds: Vec<u64>,
     pub subseeds: Vec<u64>,
-    pub subseed_strength: u32,
+    pub subseed_strength: f32,
     pub width: u32,
     pub height: u32,
     pub sampler: String,
