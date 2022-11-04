@@ -97,72 +97,126 @@ impl Client {
         &self.config
     }
 
-    pub fn generate_image_from_text(&self, prompt: &str) -> GenerationTask {
-        let prompt = prompt.to_owned();
+    pub fn generate_image_from_text(&self, request: &GenerationRequest) -> GenerationTask {
+        #[derive(Serialize)]
+        struct Request {
+            batch_size: i32,
+            cfg_scale: f32,
+            denoising_strength: f32,
+            enable_hr: bool,
+            eta: f32,
+            firstphase_height: u32,
+            firstphase_width: u32,
+            height: u32,
+            n_iter: u32,
+            negative_prompt: String,
+            prompt: String,
+            restore_faces: bool,
+            s_churn: f32,
+            s_noise: f32,
+            s_tmax: f32,
+            s_tmin: f32,
+            sampler_index: String,
+            seed: i32,
+            seed_resize_from_h: i32,
+            seed_resize_from_w: i32,
+            steps: u32,
+            styles: Vec<String>,
+            subseed: i32,
+            subseed_strength: f32,
+            tiling: bool,
+            width: u32,
+        }
+
+        let request = {
+            let d = Request {
+                enable_hr: false,
+                denoising_strength: 0.0,
+                firstphase_width: 0,
+                firstphase_height: 0,
+                prompt: String::new(),
+                styles: vec![],
+                seed: -1,
+                subseed: -1,
+                subseed_strength: 0.0,
+                seed_resize_from_h: -1,
+                seed_resize_from_w: -1,
+                batch_size: 1,
+                n_iter: 1,
+                steps: 50,
+                cfg_scale: 7.0,
+                width: 512,
+                height: 512,
+                restore_faces: false,
+                tiling: false,
+                negative_prompt: String::new(),
+                eta: 0.0,
+                s_churn: 0.0,
+                s_tmax: 0.0,
+                s_tmin: 0.0,
+                s_noise: 1.0,
+                sampler_index: "Euler".to_owned(),
+            };
+            let r = request;
+            Request {
+                batch_size: r.batch_size.map(|i| i as i32).unwrap_or(d.batch_size),
+                cfg_scale: r.cfg_scale.unwrap_or(d.cfg_scale),
+                denoising_strength: r.denoising_strength.unwrap_or(d.denoising_strength),
+                enable_hr: r.enable_hr.unwrap_or(d.enable_hr),
+                eta: r.eta.unwrap_or(d.eta),
+                firstphase_height: r.firstphase_height.unwrap_or(d.firstphase_height),
+                firstphase_width: r.firstphase_width.unwrap_or(d.firstphase_width),
+                height: r.height.unwrap_or(d.height),
+                n_iter: r.batch_count.unwrap_or(d.n_iter),
+                negative_prompt: r
+                    .negative_prompt
+                    .map(|s| s.to_owned())
+                    .unwrap_or(d.negative_prompt),
+                prompt: r.prompt.to_owned(),
+                restore_faces: r.restore_faces.unwrap_or(d.restore_faces),
+                s_churn: r.s_churn.unwrap_or(d.s_churn),
+                s_noise: r.s_noise.unwrap_or(d.s_noise),
+                s_tmax: r.s_tmax.unwrap_or(d.s_tmax),
+                s_tmin: r.s_tmin.unwrap_or(d.s_tmin),
+                sampler_index: r
+                    .sampler
+                    .map(|s| match s {
+                        Sampler::EulerA => "Euler a",
+                        Sampler::Euler => "Euler",
+                        Sampler::Lms => "LMS",
+                        Sampler::Heun => "Heun",
+                        Sampler::Dpm2 => "DPM2",
+                        Sampler::Dpm2A => "DPM2 a",
+                        Sampler::DpmFast => "DPM fast",
+                        Sampler::DpmAdaptive => "DPM adaptive",
+                        Sampler::LmsKarras => "LMS Karras",
+                        Sampler::Dpm2Karras => "DPM2 Karras",
+                        Sampler::Dpm2AKarras => "DPM2 a Karras",
+                        Sampler::Ddim => "DDIM",
+                        Sampler::Plms => "PLMS",
+                    })
+                    .map(|s| s.to_owned())
+                    .unwrap_or(d.sampler_index),
+                seed: r.seed.map(|i| i as i32).unwrap_or(d.seed),
+                seed_resize_from_h: r
+                    .seed_resize_from_h
+                    .map(|i| i as i32)
+                    .unwrap_or(d.seed_resize_from_h),
+                seed_resize_from_w: r
+                    .seed_resize_from_w
+                    .map(|i| i as i32)
+                    .unwrap_or(d.seed_resize_from_w),
+                steps: r.steps.unwrap_or(d.steps),
+                styles: r.styles.clone().unwrap_or(d.styles),
+                subseed: r.subseed.map(|i| i as i32).unwrap_or(d.subseed),
+                subseed_strength: r.subseed_strength.unwrap_or(d.subseed_strength),
+                tiling: r.tiling.unwrap_or(d.tiling),
+                width: r.width.unwrap_or(d.width),
+            }
+        };
+
         let client = self.client.clone();
         let handle = tokio::task::spawn(async move {
-            #[derive(Serialize)]
-            struct Request<'a> {
-                batch_size: i32,
-                cfg_scale: f32,
-                denoising_strength: f32,
-                enable_hr: bool,
-                eta: f32,
-                firstphase_height: u32,
-                firstphase_width: u32,
-                height: u32,
-                n_iter: u32,
-                negative_prompt: &'a str,
-                prompt: &'a str,
-                restore_faces: bool,
-                s_churn: f32,
-                s_noise: f32,
-                s_tmax: f32,
-                s_tmin: f32,
-                sampler_index: &'a str,
-                seed: i32,
-                seed_resize_from_h: i32,
-                seed_resize_from_w: i32,
-                steps: u32,
-                styles: Vec<String>,
-                subseed: i32,
-                subseed_strength: f32,
-                tiling: bool,
-                width: u32,
-            }
-            impl<'a> Default for Request<'a> {
-                fn default() -> Self {
-                    Self {
-                        enable_hr: false,
-                        denoising_strength: 0.0,
-                        firstphase_width: 0,
-                        firstphase_height: 0,
-                        prompt: "",
-                        styles: vec![],
-                        seed: -1,
-                        subseed: -1,
-                        subseed_strength: 0.0,
-                        seed_resize_from_h: -1,
-                        seed_resize_from_w: -1,
-                        batch_size: 1,
-                        n_iter: 1,
-                        steps: 50,
-                        cfg_scale: 7.0,
-                        width: 512,
-                        height: 512,
-                        restore_faces: false,
-                        tiling: false,
-                        negative_prompt: "",
-                        eta: 0.0,
-                        s_churn: 0.0,
-                        s_tmax: 0.0,
-                        s_tmin: 0.0,
-                        s_noise: 1.0,
-                        sampler_index: "Euler",
-                    }
-                }
-            }
-
             #[derive(Deserialize)]
             struct Response {
                 images: Vec<String>,
@@ -182,22 +236,12 @@ impl Client {
                 steps: usize,
             }
 
-            let response: Response = client
-                .post(
-                    "sdapi/v1/txt2img",
-                    &Request {
-                        prompt: &prompt,
-                        ..Default::default()
-                    },
-                )
-                .await?;
-
+            let response: Response = client.post("sdapi/v1/txt2img", &request).await?;
             let images = response
                 .images
                 .iter()
                 .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
                 .collect::<Result<Vec<_>>>()?;
-
             let info = {
                 let raw: InfoResponse = serde_json::from_str(&response.info)?;
                 GenerationInfo {
@@ -274,6 +318,43 @@ impl GenerationProgress {
     }
 }
 
+#[derive(Default)]
+pub struct GenerationRequest<'a> {
+    pub prompt: &'a str,
+    pub negative_prompt: Option<&'a str>,
+
+    pub batch_size: Option<u32>,
+    pub batch_count: Option<u32>,
+
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub firstphase_width: Option<u32>,
+    pub firstphase_height: Option<u32>,
+
+    pub cfg_scale: Option<f32>,
+    pub denoising_strength: Option<f32>,
+    pub eta: Option<f32>,
+    pub sampler: Option<Sampler>,
+    pub steps: Option<u32>,
+
+    pub tiling: Option<bool>,
+    pub enable_hr: Option<bool>,
+    pub restore_faces: Option<bool>,
+
+    pub s_churn: Option<f32>,
+    pub s_noise: Option<f32>,
+    pub s_tmax: Option<f32>,
+    pub s_tmin: Option<f32>,
+
+    pub seed: Option<u32>,
+    pub seed_resize_from_h: Option<u32>,
+    pub seed_resize_from_w: Option<u32>,
+    pub subseed: Option<u32>,
+    pub subseed_strength: Option<f32>,
+
+    pub styles: Option<Vec<String>>,
+}
+
 pub struct GenerationResult {
     pub images: Vec<DynamicImage>,
     pub info: GenerationInfo,
@@ -290,6 +371,36 @@ pub struct GenerationInfo {
     pub height: u32,
     pub sampler: String,
     pub steps: usize,
+}
+
+#[derive(Clone, Copy)]
+pub enum Sampler {
+    /// Euler a
+    EulerA,
+    /// Euler
+    Euler,
+    /// LMS
+    Lms,
+    /// Heun
+    Heun,
+    /// DPM2
+    Dpm2,
+    /// DPM2 a
+    Dpm2A,
+    /// DPM fast
+    DpmFast,
+    /// DPM adaptive
+    DpmAdaptive,
+    /// LMS Karras
+    LmsKarras,
+    /// DPM2 Karras
+    Dpm2Karras,
+    /// DPM2 a Karras
+    Dpm2AKarras,
+    /// DDIM
+    Ddim,
+    /// PLMS
+    Plms,
 }
 
 #[derive(Debug)]

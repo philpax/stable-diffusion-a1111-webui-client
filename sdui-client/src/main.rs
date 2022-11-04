@@ -1,9 +1,39 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use stable_diffusion_a1111_webui_client as client;
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+    pub enum Sampler {
+        /// Euler a
+        EulerA,
+        /// Euler
+        Euler,
+        /// LMS
+        Lms,
+        /// Heun
+        Heun,
+        /// DPM2
+        Dpm2,
+        /// DPM2 a
+        Dpm2A,
+        /// DPM fast
+        DpmFast,
+        /// DPM adaptive
+        DpmAdaptive,
+        /// LMS Karras
+        LmsKarras,
+        /// DPM2 Karras
+        Dpm2Karras,
+        /// DPM2 a Karras
+        Dpm2AKarras,
+        /// DDIM
+        Ddim,
+        /// PLMS
+        Plms,
+    }
+
     /// Client for Automatic1111's Stable Diffusion web UI
     #[derive(Parser)]
     #[command(author, version, about, long_about = None)]
@@ -23,6 +53,26 @@ async fn main() -> anyhow::Result<()> {
         /// The password to use for authentication. Must also pass in `username`.
         #[arg(short, long)]
         password: Option<String>,
+
+        /// The number of images to produce
+        #[arg(short, long)]
+        count: Option<u32>,
+
+        /// The number of denoising steps
+        #[arg(long)]
+        steps: Option<u32>,
+
+        /// The width of the image
+        #[arg(long)]
+        width: Option<u32>,
+
+        /// The height of the image
+        #[arg(long)]
+        height: Option<u32>,
+
+        /// The sampler to use
+        #[arg(long)]
+        sampler: Option<Sampler>,
     }
 
     let args = Args::parse();
@@ -38,7 +88,29 @@ async fn main() -> anyhow::Result<()> {
     println!("hypernetwork: {:?}", config.hypernetwork()?);
     println!("txt2img_samplers: {:?}", config.txt2img_samplers()?);
 
-    let task = client.generate_image_from_text(&args.prompt);
+    let task = client.generate_image_from_text(&client::GenerationRequest {
+        prompt: &args.prompt,
+        batch_count: args.count,
+        steps: args.steps,
+        width: args.width,
+        height: args.height,
+        sampler: args.sampler.map(|s| match s {
+            Sampler::EulerA => client::Sampler::EulerA,
+            Sampler::Euler => client::Sampler::Euler,
+            Sampler::Lms => client::Sampler::Lms,
+            Sampler::Heun => client::Sampler::Heun,
+            Sampler::Dpm2 => client::Sampler::Dpm2,
+            Sampler::Dpm2A => client::Sampler::Dpm2A,
+            Sampler::DpmFast => client::Sampler::DpmFast,
+            Sampler::DpmAdaptive => client::Sampler::DpmAdaptive,
+            Sampler::LmsKarras => client::Sampler::LmsKarras,
+            Sampler::Dpm2Karras => client::Sampler::Dpm2Karras,
+            Sampler::Dpm2AKarras => client::Sampler::Dpm2AKarras,
+            Sampler::Ddim => client::Sampler::Ddim,
+            Sampler::Plms => client::Sampler::Plms,
+        }),
+        ..Default::default()
+    });
     loop {
         let progress = task.progress().await?;
         println!(
