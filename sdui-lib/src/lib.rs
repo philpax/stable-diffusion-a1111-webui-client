@@ -155,16 +155,44 @@ impl Client {
                     info: String,
                 }
 
+                #[derive(Deserialize)]
+                pub struct InfoResponse {
+                    all_prompts: Vec<String>,
+                    negative_prompt: String,
+                    all_seeds: Vec<u64>,
+                    all_subseeds: Vec<u64>,
+                    subseed_strength: u32,
+                    width: u32,
+                    height: u32,
+                    sampler: String,
+                    steps: usize,
+                }
+
                 let response: Response =
                     client.post("sdapi/v1/txt2img", &Request { prompt }).await?;
-                Ok(GenerationResult {
-                    images: response
-                        .images
-                        .iter()
-                        .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
-                        .collect::<Result<Vec<_>>>()?,
-                    info: serde_json::from_str(&response.info)?,
-                })
+
+                let images = response
+                    .images
+                    .iter()
+                    .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
+                    .collect::<Result<Vec<_>>>()?;
+
+                let info = {
+                    let raw: InfoResponse = serde_json::from_str(&response.info)?;
+                    GenerationInfo {
+                        prompts: raw.all_prompts,
+                        negative_prompt: raw.negative_prompt,
+                        seeds: raw.all_seeds,
+                        subseeds: raw.all_subseeds,
+                        subseed_strength: raw.subseed_strength,
+                        width: raw.width,
+                        height: raw.height,
+                        sampler: raw.sampler,
+                        steps: raw.steps,
+                    }
+                };
+
+                Ok(GenerationResult { images, info })
             }),
             client: self.clone(),
         }
@@ -227,14 +255,11 @@ pub struct GenerationResult {
     pub info: GenerationInfo,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct GenerationInfo {
-    #[serde(rename = "all_prompts")]
     pub prompts: Vec<String>,
     pub negative_prompt: String,
-    #[serde(rename = "all_seeds")]
     pub seeds: Vec<u64>,
-    #[serde(rename = "all_subseeds")]
     pub subseeds: Vec<u64>,
     pub subseed_strength: u32,
     pub width: u32,
