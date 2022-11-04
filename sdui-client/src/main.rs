@@ -33,6 +33,25 @@ async fn main() -> anyhow::Result<()> {
         /// PLMS
         Plms,
     }
+    impl From<Sampler> for client::Sampler {
+        fn from(s: Sampler) -> Self {
+            match s {
+                Sampler::EulerA => client::Sampler::EulerA,
+                Sampler::Euler => client::Sampler::Euler,
+                Sampler::Lms => client::Sampler::Lms,
+                Sampler::Heun => client::Sampler::Heun,
+                Sampler::Dpm2 => client::Sampler::Dpm2,
+                Sampler::Dpm2A => client::Sampler::Dpm2A,
+                Sampler::DpmFast => client::Sampler::DpmFast,
+                Sampler::DpmAdaptive => client::Sampler::DpmAdaptive,
+                Sampler::LmsKarras => client::Sampler::LmsKarras,
+                Sampler::Dpm2Karras => client::Sampler::Dpm2Karras,
+                Sampler::Dpm2AKarras => client::Sampler::Dpm2AKarras,
+                Sampler::Ddim => client::Sampler::Ddim,
+                Sampler::Plms => client::Sampler::Plms,
+            }
+        }
+    }
 
     /// Client for Automatic1111's Stable Diffusion web UI
     #[derive(Parser)]
@@ -94,21 +113,7 @@ async fn main() -> anyhow::Result<()> {
         steps: args.steps,
         width: args.width,
         height: args.height,
-        sampler: args.sampler.map(|s| match s {
-            Sampler::EulerA => client::Sampler::EulerA,
-            Sampler::Euler => client::Sampler::Euler,
-            Sampler::Lms => client::Sampler::Lms,
-            Sampler::Heun => client::Sampler::Heun,
-            Sampler::Dpm2 => client::Sampler::Dpm2,
-            Sampler::Dpm2A => client::Sampler::Dpm2A,
-            Sampler::DpmFast => client::Sampler::DpmFast,
-            Sampler::DpmAdaptive => client::Sampler::DpmAdaptive,
-            Sampler::LmsKarras => client::Sampler::LmsKarras,
-            Sampler::Dpm2Karras => client::Sampler::Dpm2Karras,
-            Sampler::Dpm2AKarras => client::Sampler::Dpm2AKarras,
-            Sampler::Ddim => client::Sampler::Ddim,
-            Sampler::Plms => client::Sampler::Plms,
-        }),
+        sampler: args.sampler.map(|s| s.into()),
         ..Default::default()
     });
     loop {
