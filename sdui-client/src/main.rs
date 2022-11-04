@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let config = client.config().await?;
+    let config = client.config();
     println!("checkpoints: {:?}", config.checkpoints()?);
     println!("embeddings: {:?}", config.embeddings()?);
     println!("hypernetwork: {:?}", config.hypernetwork()?);

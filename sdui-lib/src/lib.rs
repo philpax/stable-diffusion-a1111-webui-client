@@ -38,73 +38,25 @@ impl ClientError {
 }
 pub type Result<T> = core::result::Result<T, ClientError>;
 
-#[derive(Clone)]
 pub struct Client {
-    url: String,
-    client: reqwest::Client,
+    client: RequestClient,
+    config: Config,
 }
 impl Client {
     pub async fn new(url: &str, authentication: Option<(&str, &str)>) -> Result<Self> {
-        if !url.starts_with("http") {
-            return Err(ClientError::InvalidUrl);
-        }
-
-        let url = url.strip_suffix("/").unwrap_or(url).to_owned();
-        let client = reqwest::ClientBuilder::new().cookie_store(true).build()?;
+        let client = RequestClient::new(url).await?;
 
         let mut body = HashMap::new();
         if let Some((username, password)) = authentication {
             body.insert("username", username);
             body.insert("password", password);
         }
-        client
-            .post(format!("{url}/login"))
-            .form(&body)
-            .send()
-            .await?
-            .text()
-            .await?;
+        client.post_raw("login").form(&body).send().await?;
 
-        Ok(Self { url, client })
-    }
-
-    fn check_for_authentication<R: DeserializeOwned>(body: String) -> Result<R> {
-        let json_body: HashMap<String, serde_json::Value> = serde_json::from_str(&body)?;
-        match json_body.get("detail") {
-            Some(serde_json::Value::String(payload)) if payload == "Not authenticated" => {
-                Err(ClientError::NotAuthenticated)
-            }
-            _ => Ok(serde_json::from_str(&body)?),
-        }
-    }
-
-    async fn get<R: DeserializeOwned>(&self, endpoint: &str) -> Result<R> {
-        Self::check_for_authentication(
-            self.client
-                .get(format!("{}/{}", self.url, endpoint))
-                .send()
+        let config = Config(
+            client
+                .get::<HashMap<String, serde_json::Value>>("config")
                 .await?
-                .text()
-                .await?,
-        )
-    }
-
-    async fn post<R: DeserializeOwned, T: Serialize>(&self, endpoint: &str, body: &T) -> Result<R> {
-        Self::check_for_authentication(
-            self.client
-                .post(format!("{}/{}", self.url, endpoint))
-                .json(body)
-                .send()
-                .await?
-                .text()
-                .await?,
-        )
-    }
-
-    pub async fn config(&self) -> Result<Config> {
-        let components: HashMap<String, serde_json::Value> = self.get("config").await?;
-        Ok(Config(
-            components
                 .get("components")
                 .ok_or_else(|| ClientError::invalid_response("components"))?
                 .as_array()
@@ -136,12 +88,18 @@ impl Client {
                     }
                 })
                 .collect(),
-        ))
+        );
+
+        Ok(Self { client, config })
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn generate_image_from_text(&self, prompt: &str) -> GenerationTask {
         let prompt = prompt.to_owned();
-        let client = self.clone();
+        let client = self.client.clone();
         GenerationTask {
             handle: tokio::task::spawn(async move {
                 #[derive(Serialize)]
@@ -194,14 +152,14 @@ impl Client {
 
                 Ok(GenerationResult { images, info })
             }),
-            client: self.clone(),
+            client: self.client.clone(),
         }
     }
 }
 
 pub struct GenerationTask {
     handle: tokio::task::JoinHandle<Result<GenerationResult>>,
-    client: Client,
+    client: RequestClient,
 }
 impl IntoFuture for GenerationTask {
     type Output = Result<GenerationResult>;
@@ -324,6 +282,51 @@ impl Config {
             .ok_or_else(|| {
                 ClientError::invalid_response(&format!("no {target_id} radio component"))
             })
+    }
+}
+
+#[derive(Clone)]
+struct RequestClient {
+    url: String,
+    client: reqwest::Client,
+}
+impl RequestClient {
+    async fn new(url: &str) -> Result<Self> {
+        if !url.starts_with("http") {
+            return Err(ClientError::InvalidUrl);
+        }
+
+        let url = url.strip_suffix("/").unwrap_or(url).to_owned();
+        let client = reqwest::ClientBuilder::new().cookie_store(true).build()?;
+
+        Ok(Self { url, client })
+    }
+
+    fn url(&self, endpoint: &str) -> String {
+        format!("{}/{}", self.url, endpoint)
+    }
+
+    fn check_for_authentication<R: DeserializeOwned>(body: String) -> Result<R> {
+        let json_body: HashMap<String, serde_json::Value> = serde_json::from_str(&body)?;
+        match json_body.get("detail") {
+            Some(serde_json::Value::String(payload)) if payload == "Not authenticated" => {
+                Err(ClientError::NotAuthenticated)
+            }
+            _ => Ok(serde_json::from_str(&body)?),
+        }
+    }
+
+    async fn send<R: DeserializeOwned>(builder: reqwest::RequestBuilder) -> Result<R> {
+        Self::check_for_authentication(builder.send().await?.text().await?)
+    }
+    async fn get<R: DeserializeOwned>(&self, endpoint: &str) -> Result<R> {
+        Self::send(self.client.get(self.url(endpoint))).await
+    }
+    async fn post<R: DeserializeOwned, T: Serialize>(&self, endpoint: &str, body: &T) -> Result<R> {
+        Self::send(self.client.post(self.url(endpoint)).json(body)).await
+    }
+    fn post_raw(&self, endpoint: &str) -> reqwest::RequestBuilder {
+        self.client.post(self.url(endpoint))
     }
 }
 
