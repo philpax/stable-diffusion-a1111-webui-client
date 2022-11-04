@@ -1,4 +1,8 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    future::{Future, IntoFuture},
+    pin::Pin,
+};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
@@ -22,6 +26,8 @@ pub enum ClientError {
     Base64DecodeError(#[from] base64::DecodeError),
     #[error("image error")]
     ImageError(#[from] image::ImageError),
+    #[error("tokio join error")]
+    TokioJoinError(#[from] tokio::task::JoinError),
 }
 impl ClientError {
     fn invalid_response(expected: &str) -> Self {
@@ -32,86 +38,7 @@ impl ClientError {
 }
 pub type Result<T> = core::result::Result<T, ClientError>;
 
-#[derive(Debug)]
-pub enum ConfigComponent {
-    Dropdown {
-        choices: Vec<String>,
-        id: String,
-        label: String,
-    },
-    Radio {
-        choices: Vec<String>,
-        id: String,
-        label: String,
-    },
-}
-
-#[derive(Debug)]
-pub struct Config(HashMap<u32, ConfigComponent>);
-impl Config {
-    pub fn checkpoints(&self) -> Result<Vec<String>> {
-        self.get_dropdown("setting_sd_model_checkpoint")
-    }
-    pub fn embeddings(&self) -> Result<Vec<String>> {
-        self.get_dropdown("train_embedding")
-    }
-    pub fn hypernetwork(&self) -> Result<Vec<String>> {
-        self.get_dropdown("setting_sd_hypernetwork")
-    }
-    pub fn txt2img_samplers(&self) -> Result<Vec<String>> {
-        self.get_radio("txt2img_sampling")
-    }
-
-    fn values(&self) -> impl Iterator<Item = &ConfigComponent> {
-        self.0.values()
-    }
-    fn get_dropdown(&self, target_id: &str) -> Result<Vec<String>> {
-        self.values()
-            .find_map(|comp| match comp {
-                ConfigComponent::Dropdown { id, choices, .. } if id == target_id => {
-                    Some(choices.clone())
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                ClientError::invalid_response(&format!("no {target_id} dropdown component"))
-            })
-    }
-    fn get_radio(&self, target_id: &str) -> Result<Vec<String>> {
-        self.values()
-            .find_map(|comp| match comp {
-                ConfigComponent::Radio { id, choices, .. } if id == target_id => {
-                    Some(choices.clone())
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                ClientError::invalid_response(&format!("no {target_id} radio component"))
-            })
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GenerationInfo {
-    #[serde(rename = "all_prompts")]
-    pub prompts: Vec<String>,
-    pub negative_prompt: String,
-    #[serde(rename = "all_seeds")]
-    pub seeds: Vec<u64>,
-    #[serde(rename = "all_subseeds")]
-    pub subseeds: Vec<u64>,
-    pub subseed_strength: u32,
-    pub width: u32,
-    pub height: u32,
-    pub sampler: String,
-    pub steps: usize,
-}
-
-pub struct GenerationResult {
-    pub images: Vec<DynamicImage>,
-    pub info: GenerationInfo,
-}
-
+#[derive(Clone)]
 pub struct Client {
     url: String,
     client: reqwest::Client,
@@ -212,27 +139,166 @@ impl Client {
         ))
     }
 
-    pub async fn generate_image_from_text(&self, prompt: &str) -> Result<GenerationResult> {
-        #[derive(Serialize)]
-        struct Request<'a> {
-            prompt: &'a str,
+    pub fn generate_image_from_text(&self, prompt: &str) -> GenerationTask {
+        let prompt = prompt.to_owned();
+        let client = self.clone();
+        GenerationTask {
+            handle: tokio::task::spawn(async move {
+                #[derive(Serialize)]
+                struct Request {
+                    prompt: String,
+                }
+
+                #[derive(Deserialize)]
+                struct Response {
+                    images: Vec<String>,
+                    info: String,
+                }
+
+                let response: Response =
+                    client.post("sdapi/v1/txt2img", &Request { prompt }).await?;
+                Ok(GenerationResult {
+                    images: response
+                        .images
+                        .iter()
+                        .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
+                        .collect::<Result<Vec<_>>>()?,
+                    info: serde_json::from_str(&response.info)?,
+                })
+            }),
+            client: self.clone(),
+        }
+    }
+}
+
+pub struct GenerationTask {
+    handle: tokio::task::JoinHandle<Result<GenerationResult>>,
+    client: Client,
+}
+impl IntoFuture for GenerationTask {
+    type Output = Result<GenerationResult>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Result<GenerationResult>>>>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.block())
+    }
+}
+impl GenerationTask {
+    pub async fn block(self) -> Result<GenerationResult> {
+        self.handle.await?
+    }
+
+    pub async fn progress(&self) -> Result<GenerationProgress> {
+        if self.handle.is_finished() {
+            return Ok(GenerationProgress {
+                eta_seconds: 0.0,
+                progress_factor: 1.0,
+            });
         }
 
         #[derive(Deserialize)]
         struct Response {
-            images: Vec<String>,
-            info: String,
+            eta_relative: f32,
+            progress: f32,
         }
 
-        let response: Response = self.post("sdapi/v1/txt2img", &Request { prompt }).await?;
-        Ok(GenerationResult {
-            images: response
-                .images
-                .iter()
-                .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
-                .collect::<Result<Vec<_>>>()?,
-            info: serde_json::from_str(&response.info)?,
+        let response: Response = self.client.get("sdapi/v1/progress").await?;
+        Ok(GenerationProgress {
+            eta_seconds: response.eta_relative,
+            progress_factor: response.progress,
         })
+    }
+}
+
+pub struct GenerationProgress {
+    /// Estimated time to completion, in seconds
+    pub eta_seconds: f32,
+    /// How much of the generation is complete, from 0 to 1
+    pub progress_factor: f32,
+}
+impl GenerationProgress {
+    pub fn is_finished(&self) -> bool {
+        self.progress_factor >= 1.0
+    }
+}
+
+pub struct GenerationResult {
+    pub images: Vec<DynamicImage>,
+    pub info: GenerationInfo,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GenerationInfo {
+    #[serde(rename = "all_prompts")]
+    pub prompts: Vec<String>,
+    pub negative_prompt: String,
+    #[serde(rename = "all_seeds")]
+    pub seeds: Vec<u64>,
+    #[serde(rename = "all_subseeds")]
+    pub subseeds: Vec<u64>,
+    pub subseed_strength: u32,
+    pub width: u32,
+    pub height: u32,
+    pub sampler: String,
+    pub steps: usize,
+}
+
+#[derive(Debug)]
+pub enum ConfigComponent {
+    Dropdown {
+        choices: Vec<String>,
+        id: String,
+        label: String,
+    },
+    Radio {
+        choices: Vec<String>,
+        id: String,
+        label: String,
+    },
+}
+
+#[derive(Debug)]
+pub struct Config(HashMap<u32, ConfigComponent>);
+impl Config {
+    pub fn checkpoints(&self) -> Result<Vec<String>> {
+        self.get_dropdown("setting_sd_model_checkpoint")
+    }
+    pub fn embeddings(&self) -> Result<Vec<String>> {
+        self.get_dropdown("train_embedding")
+    }
+    pub fn hypernetwork(&self) -> Result<Vec<String>> {
+        self.get_dropdown("setting_sd_hypernetwork")
+    }
+    pub fn txt2img_samplers(&self) -> Result<Vec<String>> {
+        self.get_radio("txt2img_sampling")
+    }
+
+    fn values(&self) -> impl Iterator<Item = &ConfigComponent> {
+        self.0.values()
+    }
+    fn get_dropdown(&self, target_id: &str) -> Result<Vec<String>> {
+        self.values()
+            .find_map(|comp| match comp {
+                ConfigComponent::Dropdown { id, choices, .. } if id == target_id => {
+                    Some(choices.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                ClientError::invalid_response(&format!("no {target_id} dropdown component"))
+            })
+    }
+    fn get_radio(&self, target_id: &str) -> Result<Vec<String>> {
+        self.values()
+            .find_map(|comp| match comp {
+                ConfigComponent::Radio { id, choices, .. } if id == target_id => {
+                    Some(choices.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                ClientError::invalid_response(&format!("no {target_id} radio component"))
+            })
     }
 }
 

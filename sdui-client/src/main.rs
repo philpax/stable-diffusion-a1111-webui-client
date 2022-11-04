@@ -1,5 +1,6 @@
 use clap::Parser;
 use stable_diffusion_a1111_webui_client as client;
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -37,7 +38,21 @@ async fn main() -> anyhow::Result<()> {
     println!("hypernetwork: {:?}", config.hypernetwork()?);
     println!("txt2img_samplers: {:?}", config.txt2img_samplers()?);
 
-    let result = client.generate_image_from_text(&args.prompt).await?;
+    let task = client.generate_image_from_text(&args.prompt);
+    loop {
+        let progress = task.progress().await?;
+        println!(
+            "{:.02}% complete, {} seconds remaining",
+            progress.progress_factor * 100.0,
+            progress.eta_seconds
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+
+        if progress.is_finished() {
+            break;
+        }
+    }
+    let result = task.await?;
     println!("info: {:?}", result.info);
     for (i, image) in result.images.into_iter().enumerate() {
         image.save(format!("output_{i}.png"))?;
