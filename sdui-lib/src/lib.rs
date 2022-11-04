@@ -300,8 +300,8 @@ impl GenerationTask {
 
         let response: Response = self.client.get("sdapi/v1/progress").await?;
         Ok(GenerationProgress {
-            eta_seconds: response.eta_relative,
-            progress_factor: response.progress,
+            eta_seconds: response.eta_relative.max(0.0),
+            progress_factor: response.progress.clamp(0.0, 1.0),
         })
     }
 }
