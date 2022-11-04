@@ -100,58 +100,59 @@ impl Client {
     pub fn generate_image_from_text(&self, prompt: &str) -> GenerationTask {
         let prompt = prompt.to_owned();
         let client = self.client.clone();
+        let handle = tokio::task::spawn(async move {
+            #[derive(Serialize)]
+            struct Request {
+                prompt: String,
+            }
+
+            #[derive(Deserialize)]
+            struct Response {
+                images: Vec<String>,
+                info: String,
+            }
+
+            #[derive(Deserialize)]
+            pub struct InfoResponse {
+                all_prompts: Vec<String>,
+                negative_prompt: String,
+                all_seeds: Vec<u64>,
+                all_subseeds: Vec<u64>,
+                subseed_strength: u32,
+                width: u32,
+                height: u32,
+                sampler: String,
+                steps: usize,
+            }
+
+            let response: Response = client.post("sdapi/v1/txt2img", &Request { prompt }).await?;
+
+            let images = response
+                .images
+                .iter()
+                .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
+                .collect::<Result<Vec<_>>>()?;
+
+            let info = {
+                let raw: InfoResponse = serde_json::from_str(&response.info)?;
+                GenerationInfo {
+                    prompts: raw.all_prompts,
+                    negative_prompt: raw.negative_prompt,
+                    seeds: raw.all_seeds,
+                    subseeds: raw.all_subseeds,
+                    subseed_strength: raw.subseed_strength,
+                    width: raw.width,
+                    height: raw.height,
+                    sampler: raw.sampler,
+                    steps: raw.steps,
+                }
+            };
+
+            Ok(GenerationResult { images, info })
+        });
+
         GenerationTask {
-            handle: tokio::task::spawn(async move {
-                #[derive(Serialize)]
-                struct Request {
-                    prompt: String,
-                }
-
-                #[derive(Deserialize)]
-                struct Response {
-                    images: Vec<String>,
-                    info: String,
-                }
-
-                #[derive(Deserialize)]
-                pub struct InfoResponse {
-                    all_prompts: Vec<String>,
-                    negative_prompt: String,
-                    all_seeds: Vec<u64>,
-                    all_subseeds: Vec<u64>,
-                    subseed_strength: u32,
-                    width: u32,
-                    height: u32,
-                    sampler: String,
-                    steps: usize,
-                }
-
-                let response: Response =
-                    client.post("sdapi/v1/txt2img", &Request { prompt }).await?;
-
-                let images = response
-                    .images
-                    .iter()
-                    .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
-                    .collect::<Result<Vec<_>>>()?;
-
-                let info = {
-                    let raw: InfoResponse = serde_json::from_str(&response.info)?;
-                    GenerationInfo {
-                        prompts: raw.all_prompts,
-                        negative_prompt: raw.negative_prompt,
-                        seeds: raw.all_seeds,
-                        subseeds: raw.all_subseeds,
-                        subseed_strength: raw.subseed_strength,
-                        width: raw.width,
-                        height: raw.height,
-                        sampler: raw.sampler,
-                        steps: raw.steps,
-                    }
-                };
-
-                Ok(GenerationResult { images, info })
-            }),
+            handle,
             client: self.client.clone(),
         }
     }
