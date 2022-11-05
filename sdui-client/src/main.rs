@@ -104,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
     let config = client.config();
     println!("checkpoints: {:?}", config.checkpoints()?);
     println!("embeddings: {:?}", config.embeddings()?);
-    println!("hypernetwork: {:?}", config.hypernetwork()?);
+    println!("hypernetworks: {:?}", config.hypernetworks()?);
     println!("txt2img_samplers: {:?}", config.txt2img_samplers()?);
 
     let task = client.generate_image_from_text(&client::GenerationRequest {

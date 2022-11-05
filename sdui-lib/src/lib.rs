@@ -1,3 +1,6 @@
+#![deny(missing_docs)]
+//! This is a client for the Automatic1111 stable-diffusion web UI.
+
 use std::{
     collections::HashMap,
     future::{Future, IntoFuture},
@@ -9,23 +12,35 @@ use thiserror::Error;
 
 pub use image::DynamicImage;
 
+/// All potential errors that the client can produce.
 #[derive(Error, Debug)]
 pub enum ClientError {
+    /// The URL passed to the `Client` was invalid.
     #[error("invalid url; make sure it starts with http")]
     InvalidUrl,
+    /// The credentials for the `Client` are wrong or missing.
     #[error("Not authenticated")]
     NotAuthenticated,
+    /// There was an error with the request.
     #[error("invalid response body (expected {expected:?})")]
-    InvalidResponse { expected: String },
+    InvalidResponse {
+        /// The message associated with the error.
+        expected: String,
+    },
 
+    /// Error returned by `reqwest`.
     #[error("reqwest error")]
     ReqwestError(#[from] reqwest::Error),
+    /// Error returned by `serde_json`.
     #[error("serde json error")]
     SerdeJsonError(#[from] serde_json::Error),
+    /// Error returned by `base64`.
     #[error("base64 decode error")]
     Base64DecodeError(#[from] base64::DecodeError),
+    /// Error returned by `image`.
     #[error("image error")]
     ImageError(#[from] image::ImageError),
+    /// Error returned by `tokio` due to a failure to join the task.
     #[error("tokio join error")]
     TokioJoinError(#[from] tokio::task::JoinError),
 }
@@ -36,13 +51,16 @@ impl ClientError {
         }
     }
 }
+/// Result type for the `Client`.
 pub type Result<T> = core::result::Result<T, ClientError>;
 
+/// Interface to the web UI.
 pub struct Client {
     client: RequestClient,
     config: Config,
 }
 impl Client {
+    /// Creates a new `Client` and authenticates to the web UI.
     pub async fn new(url: &str, authentication: Option<(&str, &str)>) -> Result<Self> {
         let client = RequestClient::new(url).await?;
 
@@ -73,7 +91,6 @@ impl Client {
                             ConfigComponent::Dropdown {
                                 choices: extract_string_array(props.get("choices")?)?,
                                 id: props.get("elem_id")?.as_str()?.to_owned(),
-                                label: props.get("label")?.as_str()?.to_owned(),
                             },
                         )),
                         "radio" => Some((
@@ -81,7 +98,6 @@ impl Client {
                             ConfigComponent::Radio {
                                 choices: extract_string_array(props.get("choices")?)?,
                                 id: props.get("elem_id")?.as_str()?.to_owned(),
-                                label: props.get("label")?.as_str()?.to_owned(),
                             },
                         )),
                         _ => None,
@@ -93,10 +109,15 @@ impl Client {
         Ok(Self { client, config })
     }
 
+    /// The configuration for the web UI; retrieved during [Self::new].
     pub fn config(&self) -> &Config {
         &self.config
     }
 
+    /// Generates an image from the provided `request`.
+    ///
+    /// The `GenerationTask` can be `await`ed, or its [GenerationTask::progress]
+    /// can be retrieved to find out what the status of the generation is.
     pub fn generate_image_from_text(&self, request: &GenerationRequest) -> GenerationTask {
         #[derive(Serialize)]
         struct Request {
@@ -267,6 +288,7 @@ impl Client {
     }
 }
 
+/// Represents an ongoing generation.
 pub struct GenerationTask {
     handle: tokio::task::JoinHandle<Result<GenerationResult>>,
     client: RequestClient,
@@ -280,10 +302,12 @@ impl IntoFuture for GenerationTask {
     }
 }
 impl GenerationTask {
+    /// Waits for the generation to be complete.
     pub async fn block(self) -> Result<GenerationResult> {
         self.handle.await?
     }
 
+    /// Retrieves the progress of the ongoing generation.
     pub async fn progress(&self) -> Result<GenerationProgress> {
         if self.handle.is_finished() {
             return Ok(GenerationProgress {
@@ -306,6 +330,10 @@ impl GenerationTask {
     }
 }
 
+/// How much of the generation is complete.
+///
+/// Note that this can return a zero value on completion as the web UI
+/// can take time to return the result after completion.
 pub struct GenerationProgress {
     /// Estimated time to completion, in seconds
     pub eta_seconds: f32,
@@ -313,66 +341,113 @@ pub struct GenerationProgress {
     pub progress_factor: f32,
 }
 impl GenerationProgress {
+    /// Whether or not the generation has completed.
     pub fn is_finished(&self) -> bool {
         self.progress_factor >= 1.0
     }
 }
 
+/// The parameters to the generation.
+///
+/// Consider using the [Default] trait to fill in the
+/// parameters that you don't need to fill in.
 #[derive(Default)]
 pub struct GenerationRequest<'a> {
+    /// The prompt
     pub prompt: &'a str,
+    /// The negative prompt (elements to avoid from the generation)
     pub negative_prompt: Option<&'a str>,
 
+    /// The number of images in each batch
     pub batch_size: Option<u32>,
+    /// The number of batches
     pub batch_count: Option<u32>,
 
+    /// The width of the generated image
     pub width: Option<u32>,
+    /// The height of the generated image
     pub height: Option<u32>,
+    /// The width of the first phase of the generated image
     pub firstphase_width: Option<u32>,
+    /// The height of the first phase of the generated image
     pub firstphase_height: Option<u32>,
 
+    /// The Classifier-Free Guidance scale; how strongly the prompt is
+    /// applied to the generation
     pub cfg_scale: Option<f32>,
+    /// The denoising strength
     pub denoising_strength: Option<f32>,
+    /// The η parameter
     pub eta: Option<f32>,
+    /// The sampler to use for the generation
     pub sampler: Option<Sampler>,
+    /// The number of steps
     pub steps: Option<u32>,
 
+    /// Whether or not the image should be tiled at the edges
     pub tiling: Option<bool>,
+    /// Unknown
     pub enable_hr: Option<bool>,
+    /// Whether or not to apply the face restoration
     pub restore_faces: Option<bool>,
 
+    /// s_churn
     pub s_churn: Option<f32>,
+    /// s_noise
     pub s_noise: Option<f32>,
+    /// s_tmax
     pub s_tmax: Option<f32>,
+    /// s_tmin
     pub s_tmin: Option<f32>,
 
+    /// The seed to use for this generation. This will apply to the first image,
+    /// and the web UI will generate the successive seeds.
     pub seed: Option<u32>,
-    pub seed_resize_from_h: Option<u32>,
+    /// The width to resize the image from if reusing a seed with a different size
     pub seed_resize_from_w: Option<u32>,
+    /// The height to resize the image from if reusing a seed with a different size
+    pub seed_resize_from_h: Option<u32>,
+    /// The subseed to use for this generation
     pub subseed: Option<u32>,
+    /// The strength of the subseed
     pub subseed_strength: Option<f32>,
 
+    /// Any styles to apply to the generation
     pub styles: Option<Vec<String>>,
 }
 
+/// The result of the generation.
 pub struct GenerationResult {
+    /// The images produced by the generator.
     pub images: Vec<DynamicImage>,
+    /// The information associated with this generation.
     pub info: GenerationInfo,
 }
 
+/// The information associated with a generation.
 #[derive(Debug)]
 pub struct GenerationInfo {
+    /// The prompts used for each image in the generation.
     pub prompts: Vec<String>,
+    /// The negative prompt that was applied to each image.
     pub negative_prompt: String,
+    /// The seeds for the images; each seed corresponds to an image.
     pub seeds: Vec<u64>,
+    /// The subseeds for the images; each seed corresponds to an image.
     pub subseeds: Vec<u64>,
+    /// The strength of the subseed.
     pub subseed_strength: f32,
+    /// The width of the generated images.
     pub width: u32,
+    /// The height of the generated images.
     pub height: u32,
+    /// The sampler that was used for this generation.
     pub sampler: String,
+    /// The number of steps that were used for each generation.
     pub steps: usize,
 }
 
+/// The sampler to use for the generation.
 #[derive(Clone, Copy)]
 pub enum Sampler {
     /// Euler a
@@ -404,31 +479,28 @@ pub enum Sampler {
 }
 
 #[derive(Debug)]
-pub enum ConfigComponent {
-    Dropdown {
-        choices: Vec<String>,
-        id: String,
-        label: String,
-    },
-    Radio {
-        choices: Vec<String>,
-        id: String,
-        label: String,
-    },
+enum ConfigComponent {
+    Dropdown { choices: Vec<String>, id: String },
+    Radio { choices: Vec<String>, id: String },
 }
 
+/// The configuration for the Web UI.
 #[derive(Debug)]
 pub struct Config(HashMap<u32, ConfigComponent>);
 impl Config {
+    /// All of the available checkpoints/models available.
     pub fn checkpoints(&self) -> Result<Vec<String>> {
         self.get_dropdown("setting_sd_model_checkpoint")
     }
+    /// All of the embeddings available.
     pub fn embeddings(&self) -> Result<Vec<String>> {
         self.get_dropdown("train_embedding")
     }
-    pub fn hypernetwork(&self) -> Result<Vec<String>> {
+    /// All of the hypernetworks available.
+    pub fn hypernetworks(&self) -> Result<Vec<String>> {
         self.get_dropdown("setting_sd_hypernetwork")
     }
+    /// All of the samplers available for text to image generation.
     pub fn txt2img_samplers(&self) -> Result<Vec<String>> {
         self.get_radio("txt2img_sampling")
     }
