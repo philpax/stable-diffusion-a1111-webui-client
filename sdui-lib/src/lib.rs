@@ -654,6 +654,7 @@ impl RequestClient {
     }
 
     fn check_for_authentication<R: DeserializeOwned>(body: String) -> Result<R> {
+        dbg!(&body);
         let json_body: HashMap<String, serde_json::Value> = serde_json::from_str(&body)?;
         match json_body.get("detail") {
             Some(serde_json::Value::String(payload)) if payload == "Not authenticated" => {
