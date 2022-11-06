@@ -74,47 +74,9 @@ impl Client {
         }
         client.post_raw("login").form(&body).send().await?;
 
-        let config = Config(
-            client
-                .get::<HashMap<String, serde_json::Value>>("config")
-                .await?
-                .get("components")
-                .ok_or_else(|| ClientError::invalid_response("components"))?
-                .as_array()
-                .ok_or_else(|| ClientError::invalid_response("components to be an array"))?
-                .into_iter()
-                .filter_map(|v| v.as_object())
-                .filter_map(|o| {
-                    let id = o.get("id")?.as_u64()? as u32;
-                    let comp_type = o.get("type")?.as_str()?;
-                    let props = o.get("props")?.as_object()?;
-                    match comp_type {
-                        "dropdown" => Some((
-                            id,
-                            ConfigComponent::Dropdown {
-                                choices: extract_string_array(props.get("choices")?)?,
-                                id: props.get("elem_id")?.as_str()?.to_owned(),
-                            },
-                        )),
-                        "radio" => Some((
-                            id,
-                            ConfigComponent::Radio {
-                                choices: extract_string_array(props.get("choices")?)?,
-                                id: props.get("elem_id")?.as_str()?.to_owned(),
-                            },
-                        )),
-                        _ => None,
-                    }
-                })
-                .collect(),
-        );
+        let config = Config::new(&client).await?;
 
         Ok(Self { client, config })
-    }
-
-    /// The configuration for the web UI; retrieved during [Self::new].
-    pub fn config(&self) -> &Config {
-        &self.config
     }
 
     /// Generates an image from the provided `request`.
@@ -289,6 +251,194 @@ impl Client {
             handle,
             client: self.client.clone(),
         }
+    }
+
+    /// Get the embeddings
+    pub async fn embeddings(&self) -> Result<Vec<String>> {
+        self.config.embeddings()
+    }
+
+    /// Get the options
+    pub async fn options(&self) -> Result<Options> {
+        #[derive(Serialize, Deserialize)]
+        struct OptionsRaw {
+            s_churn: f32,
+            s_noise: f32,
+            s_tmin: f32,
+            sd_hypernetwork: String,
+            sd_model_checkpoint: String,
+        }
+
+        self.client
+            .get::<OptionsRaw>("sdapi/v1/options")
+            .await
+            .map(|r| Options {
+                hypernetwork: r.sd_hypernetwork,
+                model: r.sd_model_checkpoint,
+                s_churn: r.s_churn,
+                s_noise: r.s_noise,
+                s_tmin: r.s_tmin,
+            })
+    }
+
+    /// Get the samplers
+    pub async fn samplers(&self) -> Result<Vec<Sampler>> {
+        #[derive(Serialize, Deserialize)]
+        struct SamplerRaw {
+            aliases: Vec<String>,
+            name: String,
+        }
+
+        self.client
+            .get::<Vec<SamplerRaw>>("sdapi/v1/samplers")
+            .await
+            .map(|r| {
+                r.into_iter()
+                    .filter_map(|s| Sampler::try_from(s.name.as_str()).ok())
+                    .collect::<Vec<_>>()
+            })
+    }
+
+    /// Get the upscalers
+    pub async fn upscalers(&self) -> Result<Vec<Upscaler>> {
+        #[derive(Serialize, Deserialize)]
+        struct UpscalerRaw {
+            model_name: Option<String>,
+            model_path: Option<String>,
+            model_url: Option<String>,
+            name: String,
+        }
+
+        self.client
+            .get::<Vec<UpscalerRaw>>("sdapi/v1/upscalers")
+            .await
+            .map(|r| {
+                r.into_iter()
+                    .map(|r| Upscaler {
+                        name: r.name,
+                        model_name: r.model_name,
+                    })
+                    .collect()
+            })
+    }
+
+    /// Get the models
+    pub async fn models(&self) -> Result<Vec<Model>> {
+        #[derive(Serialize, Deserialize)]
+        struct ModelRaw {
+            config: String,
+            filename: String,
+            hash: String,
+            model_name: String,
+            title: String,
+        }
+
+        self.client
+            .get::<Vec<ModelRaw>>("sdapi/v1/sd-models")
+            .await
+            .map(|r| {
+                r.into_iter()
+                    .map(|r| Model {
+                        title: r.title,
+                        name: r.model_name,
+                    })
+                    .collect()
+            })
+    }
+
+    /// Get the hypernetworks
+    pub async fn hypernetworks(&self) -> Result<Vec<String>> {
+        #[derive(Serialize, Deserialize)]
+        struct HypernetworkRaw {
+            name: String,
+            path: String,
+        }
+
+        self.client
+            .get::<Vec<HypernetworkRaw>>("sdapi/v1/hypernetworks")
+            .await
+            .map(|r| r.into_iter().map(|s| s.name).collect())
+    }
+
+    /// Get the face restorers
+    pub async fn face_restorers(&self) -> Result<Vec<String>> {
+        #[derive(Serialize, Deserialize)]
+        struct FaceRestorerRaw {
+            cmd_dir: Option<String>,
+            name: String,
+        }
+
+        self.client
+            .get::<Vec<FaceRestorerRaw>>("sdapi/v1/face-restorers")
+            .await
+            .map(|r| r.into_iter().map(|s| s.name).collect())
+    }
+
+    /// Get the real ESRGAN models
+    pub async fn realesrgan_models(&self) -> Result<Vec<String>> {
+        #[derive(Serialize, Deserialize)]
+        struct RealEsrganModelRaw {
+            name: String,
+            path: Option<String>,
+            scale: i64,
+        }
+
+        self.client
+            .get::<Vec<RealEsrganModelRaw>>("sdapi/v1/realesrgan-models")
+            .await
+            .map(|r| r.into_iter().map(|s| s.name).collect())
+    }
+
+    /// Get the prompt styles
+    pub async fn prompt_styles(&self) -> Result<Vec<PromptStyle>> {
+        #[derive(Serialize, Deserialize)]
+        struct PromptStyleRaw {
+            name: String,
+            negative_prompt: Option<String>,
+            prompt: Option<String>,
+        }
+
+        self.client
+            .get::<Vec<PromptStyleRaw>>("sdapi/v1/prompt-styles")
+            .await
+            .map(|r| {
+                r.into_iter()
+                    .map(|r| PromptStyle {
+                        name: r.name,
+                        prompt: r.prompt,
+                        negative_prompt: r.negative_prompt,
+                    })
+                    .collect()
+            })
+    }
+
+    /// Get the artist categories
+    pub async fn artist_categories(&self) -> Result<Vec<String>> {
+        self.client
+            .get::<Vec<String>>("sdapi/v1/artist-categories")
+            .await
+    }
+
+    /// Get the artists
+    pub async fn artists(&self) -> Result<Vec<Artist>> {
+        #[derive(Serialize, Deserialize)]
+        struct ArtistRaw {
+            category: String,
+            name: String,
+            score: f32,
+        }
+
+        self.client
+            .get::<Vec<ArtistRaw>>("sdapi/v1/artists")
+            .await
+            .map(|r| {
+                r.into_iter()
+                    .map(|r| Artist {
+                        name: r.name,
+                        category: r.category,
+                    })
+                    .collect()
+            })
     }
 }
 
@@ -579,6 +729,60 @@ impl Sampler {
     ];
 }
 
+/// The currently set options for the UI
+#[derive(Debug)]
+pub struct Options {
+    /// Current hypernetwork
+    pub hypernetwork: String,
+    /// Current model
+    pub model: String,
+
+    /// s_churn
+    pub s_churn: f32,
+    /// s_noise
+    pub s_noise: f32,
+    /// s_tmin
+    pub s_tmin: f32,
+}
+
+/// Upscaler
+#[derive(Debug)]
+pub struct Upscaler {
+    /// Name of the upscaler
+    pub name: String,
+    /// Name of the model used for this upscaler
+    pub model_name: Option<String>,
+}
+
+/// Model
+#[derive(Debug)]
+pub struct Model {
+    /// Title of the model
+    pub title: String,
+    /// Name of the model
+    pub name: String,
+}
+
+/// Prompt style
+#[derive(Debug)]
+pub struct PromptStyle {
+    /// Name of the style
+    pub name: String,
+    /// Prompt of the style
+    pub prompt: Option<String>,
+    /// Negative prompt of the style
+    pub negative_prompt: Option<String>,
+}
+
+/// Artist
+#[derive(Debug)]
+pub struct Artist {
+    /// Name of the artist
+    pub name: String,
+    /// Category the artist belongs to
+    pub category: String,
+}
+
 #[derive(Debug)]
 enum ConfigComponent {
     Dropdown { choices: Vec<String>, id: String },
@@ -587,23 +791,48 @@ enum ConfigComponent {
 
 /// The configuration for the Web UI.
 #[derive(Debug)]
-pub struct Config(HashMap<u32, ConfigComponent>);
+struct Config(HashMap<u32, ConfigComponent>);
 impl Config {
-    /// All of the available checkpoints/models available.
-    pub fn checkpoints(&self) -> Result<Vec<String>> {
-        self.get_dropdown("setting_sd_model_checkpoint")
+    async fn new(client: &RequestClient) -> Result<Self> {
+        Ok(Self(
+            client
+                .get::<HashMap<String, serde_json::Value>>("config")
+                .await?
+                .get("components")
+                .ok_or_else(|| ClientError::invalid_response("components"))?
+                .as_array()
+                .ok_or_else(|| ClientError::invalid_response("components to be an array"))?
+                .into_iter()
+                .filter_map(|v| v.as_object())
+                .filter_map(|o| {
+                    let id = o.get("id")?.as_u64()? as u32;
+                    let comp_type = o.get("type")?.as_str()?;
+                    let props = o.get("props")?.as_object()?;
+                    match comp_type {
+                        "dropdown" => Some((
+                            id,
+                            ConfigComponent::Dropdown {
+                                choices: extract_string_array(props.get("choices")?)?,
+                                id: props.get("elem_id")?.as_str()?.to_owned(),
+                            },
+                        )),
+                        "radio" => Some((
+                            id,
+                            ConfigComponent::Radio {
+                                choices: extract_string_array(props.get("choices")?)?,
+                                id: props.get("elem_id")?.as_str()?.to_owned(),
+                            },
+                        )),
+                        _ => None,
+                    }
+                })
+                .collect(),
+        ))
     }
+
     /// All of the embeddings available.
-    pub fn embeddings(&self) -> Result<Vec<String>> {
+    fn embeddings(&self) -> Result<Vec<String>> {
         self.get_dropdown("train_embedding")
-    }
-    /// All of the hypernetworks available.
-    pub fn hypernetworks(&self) -> Result<Vec<String>> {
-        self.get_dropdown("setting_sd_hypernetwork")
-    }
-    /// All of the samplers available for text to image generation.
-    pub fn txt2img_samplers(&self) -> Result<Vec<String>> {
-        self.get_radio("txt2img_sampling")
     }
 
     fn values(&self) -> impl Iterator<Item = &ConfigComponent> {
@@ -621,6 +850,7 @@ impl Config {
                 ClientError::invalid_response(&format!("no {target_id} dropdown component"))
             })
     }
+    #[allow(dead_code)]
     fn get_radio(&self, target_id: &str) -> Result<Vec<String>> {
         self.values()
             .find_map(|comp| match comp {
@@ -661,12 +891,14 @@ impl RequestClient {
             return Err(ClientError::InternalServerError);
         }
 
-        let json_body: HashMap<String, serde_json::Value> = serde_json::from_str(&body)?;
-        match json_body.get("detail") {
-            Some(serde_json::Value::String(payload)) if payload == "Not authenticated" => {
-                Err(ClientError::NotAuthenticated)
-            }
-            _ => Ok(serde_json::from_str(&body)?),
+        match serde_json::from_str::<HashMap<String, serde_json::Value>>(&body) {
+            Ok(json_body) => match json_body.get("detail") {
+                Some(serde_json::Value::String(payload)) if payload == "Not authenticated" => {
+                    Err(ClientError::NotAuthenticated)
+                }
+                _ => Ok(serde_json::from_str(&body)?),
+            },
+            Err(_) => Ok(serde_json::from_str(&body)?),
         }
     }
 

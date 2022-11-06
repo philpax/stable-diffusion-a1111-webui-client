@@ -92,6 +92,10 @@ async fn main() -> anyhow::Result<()> {
         /// The sampler to use
         #[arg(long)]
         sampler: Option<Sampler>,
+
+        /// Print information about the client
+        #[arg(long)]
+        print_information: bool,
     }
 
     let args = Args::parse();
@@ -101,11 +105,19 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    let config = client.config();
-    println!("checkpoints: {:?}", config.checkpoints()?);
-    println!("embeddings: {:?}", config.embeddings()?);
-    println!("hypernetworks: {:?}", config.hypernetworks()?);
-    println!("txt2img_samplers: {:?}", config.txt2img_samplers()?);
+    if args.print_information {
+        println!("embeddings: {:?}", client.embeddings().await?);
+        println!("options: {:?}", client.options().await?);
+        println!("samplers: {:?}", client.samplers().await?);
+        println!("upscalers: {:?}", client.upscalers().await?);
+        println!("models: {:?}", client.models().await?);
+        println!("hypernetworks: {:?}", client.hypernetworks().await?);
+        println!("face_restorers: {:?}", client.face_restorers().await?);
+        println!("realesrgan_models: {:?}", client.realesrgan_models().await?);
+        println!("prompt_styles: {:?}", client.prompt_styles().await?);
+        println!("artist_categories: {:?}", client.artist_categories().await?);
+        println!("artists: {:?}", client.artists().await?);
+    }
 
     let task = client.generate_image_from_text(&client::GenerationRequest {
         prompt: &args.prompt,
