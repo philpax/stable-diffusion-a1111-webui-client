@@ -27,6 +27,9 @@ pub enum ClientError {
         /// The message associated with the error.
         expected: String,
     },
+    /// The UI experienced an internal server error.
+    #[error("internal server error")]
+    InternalServerError,
 
     /// Error returned by `reqwest`.
     #[error("reqwest error")]
@@ -654,7 +657,10 @@ impl RequestClient {
     }
 
     fn check_for_authentication<R: DeserializeOwned>(body: String) -> Result<R> {
-        dbg!(&body);
+        if body.trim() == "Internal Server Error" {
+            return Err(ClientError::InternalServerError);
+        }
+
         let json_body: HashMap<String, serde_json::Value> = serde_json::from_str(&body)?;
         match json_body.get("detail") {
             Some(serde_json::Value::String(payload)) if payload == "Not authenticated" => {
