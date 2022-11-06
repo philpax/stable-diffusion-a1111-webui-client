@@ -138,12 +138,12 @@ impl Client {
             s_tmax: f32,
             s_tmin: f32,
             sampler_index: String,
-            seed: i32,
+            seed: i64,
             seed_resize_from_h: i32,
             seed_resize_from_w: i32,
             steps: u32,
             styles: Vec<String>,
-            subseed: i32,
+            subseed: i64,
             subseed_strength: f32,
             tiling: bool,
             width: u32,
@@ -218,7 +218,7 @@ impl Client {
                     })
                     .map(|s| s.to_owned())
                     .unwrap_or(d.sampler_index),
-                seed: r.seed.map(|i| i as i32).unwrap_or(d.seed),
+                seed: r.seed.unwrap_or(d.seed),
                 seed_resize_from_h: r
                     .seed_resize_from_h
                     .map(|i| i as i32)
@@ -229,7 +229,7 @@ impl Client {
                     .unwrap_or(d.seed_resize_from_w),
                 steps: r.steps.unwrap_or(d.steps),
                 styles: r.styles.clone().unwrap_or(d.styles),
-                subseed: r.subseed.map(|i| i as i32).unwrap_or(d.subseed),
+                subseed: r.subseed.unwrap_or(d.subseed),
                 subseed_strength: r.subseed_strength.unwrap_or(d.subseed_strength),
                 tiling: r.tiling.unwrap_or(d.tiling),
                 width: r.width.unwrap_or(d.width),
@@ -402,13 +402,13 @@ pub struct GenerationRequest<'a> {
 
     /// The seed to use for this generation. This will apply to the first image,
     /// and the web UI will generate the successive seeds.
-    pub seed: Option<u32>,
+    pub seed: Option<i64>,
     /// The width to resize the image from if reusing a seed with a different size
     pub seed_resize_from_w: Option<u32>,
     /// The height to resize the image from if reusing a seed with a different size
     pub seed_resize_from_h: Option<u32>,
     /// The subseed to use for this generation
-    pub subseed: Option<u32>,
+    pub subseed: Option<i64>,
     /// The strength of the subseed
     pub subseed_strength: Option<f32>,
 
