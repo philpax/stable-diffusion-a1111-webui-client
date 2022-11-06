@@ -199,25 +199,7 @@ impl Client {
                 s_noise: r.s_noise.unwrap_or(d.s_noise),
                 s_tmax: r.s_tmax.unwrap_or(d.s_tmax),
                 s_tmin: r.s_tmin.unwrap_or(d.s_tmin),
-                sampler_index: r
-                    .sampler
-                    .map(|s| match s {
-                        Sampler::EulerA => "Euler a",
-                        Sampler::Euler => "Euler",
-                        Sampler::Lms => "LMS",
-                        Sampler::Heun => "Heun",
-                        Sampler::Dpm2 => "DPM2",
-                        Sampler::Dpm2A => "DPM2 a",
-                        Sampler::DpmFast => "DPM fast",
-                        Sampler::DpmAdaptive => "DPM adaptive",
-                        Sampler::LmsKarras => "LMS Karras",
-                        Sampler::Dpm2Karras => "DPM2 Karras",
-                        Sampler::Dpm2AKarras => "DPM2 a Karras",
-                        Sampler::Ddim => "DDIM",
-                        Sampler::Plms => "PLMS",
-                    })
-                    .map(|s| s.to_owned())
-                    .unwrap_or(d.sampler_index),
+                sampler_index: r.sampler.map(|s| s.to_string()).unwrap_or(d.sampler_index),
                 seed: r.seed.unwrap_or(d.seed),
                 seed_resize_from_h: r
                     .seed_resize_from_h
@@ -476,6 +458,66 @@ pub enum Sampler {
     Ddim,
     /// PLMS
     Plms,
+}
+impl ToString for Sampler {
+    fn to_string(&self) -> String {
+        match self {
+            Sampler::EulerA => "Euler a",
+            Sampler::Euler => "Euler",
+            Sampler::Lms => "LMS",
+            Sampler::Heun => "Heun",
+            Sampler::Dpm2 => "DPM2",
+            Sampler::Dpm2A => "DPM2 a",
+            Sampler::DpmFast => "DPM fast",
+            Sampler::DpmAdaptive => "DPM adaptive",
+            Sampler::LmsKarras => "LMS Karras",
+            Sampler::Dpm2Karras => "DPM2 Karras",
+            Sampler::Dpm2AKarras => "DPM2 a Karras",
+            Sampler::Ddim => "DDIM",
+            Sampler::Plms => "PLMS",
+        }
+        .to_string()
+    }
+}
+impl TryFrom<&str> for Sampler {
+    type Error = ();
+
+    fn try_from(s: &str) -> core::result::Result<Sampler, ()> {
+        match s {
+            "Euler a" => Ok(Sampler::EulerA),
+            "Euler" => Ok(Sampler::Euler),
+            "LMS" => Ok(Sampler::Lms),
+            "Heun" => Ok(Sampler::Heun),
+            "DPM2" => Ok(Sampler::Dpm2),
+            "DPM2 a" => Ok(Sampler::Dpm2A),
+            "DPM fast" => Ok(Sampler::DpmFast),
+            "DPM adaptive" => Ok(Sampler::DpmAdaptive),
+            "LMS Karras" => Ok(Sampler::LmsKarras),
+            "DPM2 Karras" => Ok(Sampler::Dpm2Karras),
+            "DPM2 a Karras" => Ok(Sampler::Dpm2AKarras),
+            "DDIM" => Ok(Sampler::Ddim),
+            "PLMS" => Ok(Sampler::Plms),
+            _ => Err(()),
+        }
+    }
+}
+impl Sampler {
+    /// All of the possible values.
+    pub const VALUES: &[Sampler] = &[
+        Sampler::EulerA,
+        Sampler::Euler,
+        Sampler::Lms,
+        Sampler::Heun,
+        Sampler::Dpm2,
+        Sampler::Dpm2A,
+        Sampler::DpmFast,
+        Sampler::DpmAdaptive,
+        Sampler::LmsKarras,
+        Sampler::Dpm2Karras,
+        Sampler::Dpm2AKarras,
+        Sampler::Ddim,
+        Sampler::Plms,
+    ];
 }
 
 #[derive(Debug)]
