@@ -295,7 +295,7 @@ pub struct GenerationTask {
 }
 impl IntoFuture for GenerationTask {
     type Output = Result<GenerationResult>;
-    type IntoFuture = Pin<Box<dyn Future<Output = Result<GenerationResult>>>>;
+    type IntoFuture = Pin<Box<dyn Future<Output = Result<GenerationResult>> + Send + Sync>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.block())
