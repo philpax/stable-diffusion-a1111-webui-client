@@ -149,6 +149,9 @@ impl Client {
             width: u32,
         }
 
+        let (seed_resize_from_w, seed_resize_from_h) =
+            (request.seed_resize_from_w, request.seed_resize_from_h);
+
         let request = {
             let d = Request {
                 enable_hr: false,
@@ -255,8 +258,24 @@ impl Client {
                     subseed_strength: raw.subseed_strength,
                     width: raw.width,
                     height: raw.height,
-                    sampler: raw.sampler,
+                    sampler: Sampler::try_from(raw.sampler.as_str()).unwrap(),
                     steps: raw.steps,
+
+                    firstphase_width: request.firstphase_width,
+                    firstphase_height: request.firstphase_height,
+                    cfg_scale: request.cfg_scale,
+                    denoising_strength: request.denoising_strength,
+                    eta: request.eta,
+                    tiling: request.tiling,
+                    enable_hr: request.enable_hr,
+                    restore_faces: request.restore_faces,
+                    s_churn: request.s_churn,
+                    s_noise: request.s_noise,
+                    s_tmax: request.s_tmax,
+                    s_tmin: request.s_tmin,
+                    seed_resize_from_w,
+                    seed_resize_from_h,
+                    styles: request.styles,
                 }
             };
 
@@ -424,13 +443,50 @@ pub struct GenerationInfo {
     /// The height of the generated images.
     pub height: u32,
     /// The sampler that was used for this generation.
-    pub sampler: String,
+    pub sampler: Sampler,
     /// The number of steps that were used for each generation.
     pub steps: usize,
+
+    /// The width of the first phase of the generated image
+    pub firstphase_width: u32,
+    /// The height of the first phase of the generated image
+    pub firstphase_height: u32,
+
+    /// The Classifier-Free Guidance scale; how strongly the prompt was
+    /// applied to the generation
+    pub cfg_scale: f32,
+    /// The denoising strength
+    pub denoising_strength: f32,
+    /// The η parameter
+    pub eta: f32,
+
+    /// Whether or not the image was tiled at the edges
+    pub tiling: bool,
+    /// Unknown
+    pub enable_hr: bool,
+    /// Whether or not the face restoration was applied
+    pub restore_faces: bool,
+
+    /// s_churn
+    pub s_churn: f32,
+    /// s_noise
+    pub s_noise: f32,
+    /// s_tmax
+    pub s_tmax: f32,
+    /// s_tmin
+    pub s_tmin: f32,
+
+    /// The width to resize the image from if reusing a seed with a different size
+    pub seed_resize_from_w: Option<u32>,
+    /// The height to resize the image from if reusing a seed with a different size
+    pub seed_resize_from_h: Option<u32>,
+
+    /// Any styles applied to the generation
+    pub styles: Vec<String>,
 }
 
 /// The sampler to use for the generation.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Sampler {
     /// Euler a
     EulerA,
