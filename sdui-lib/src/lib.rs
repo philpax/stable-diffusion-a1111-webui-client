@@ -114,9 +114,6 @@ impl Client {
             width: u32,
         }
 
-        let (seed_resize_from_w, seed_resize_from_h) =
-            (request.seed_resize_from_w, request.seed_resize_from_h);
-
         let request = {
             let d = Request {
                 enable_hr: false,
@@ -196,14 +193,29 @@ impl Client {
 
             #[derive(Deserialize)]
             pub struct InfoResponse {
+                all_negative_prompts: Vec<String>,
                 all_prompts: Vec<String>,
-                negative_prompt: String,
+
                 all_seeds: Vec<u64>,
+                seed_resize_from_h: i32,
+                seed_resize_from_w: i32,
+
                 all_subseeds: Vec<u64>,
                 subseed_strength: f32,
+
+                cfg_scale: f32,
+                clip_skip: usize,
+                denoising_strength: f32,
+                face_restoration_model: Option<String>,
+                is_using_inpainting_conditioning: bool,
+                job_timestamp: String,
+                restore_faces: bool,
+                sd_model_hash: String,
+                styles: Vec<String>,
+
                 width: u32,
                 height: u32,
-                sampler: String,
+                sampler_name: String,
                 steps: usize,
             }
 
@@ -217,30 +229,40 @@ impl Client {
                 let raw: InfoResponse = serde_json::from_str(&response.info)?;
                 GenerationInfo {
                     prompts: raw.all_prompts,
-                    negative_prompt: raw.negative_prompt,
+                    negative_prompts: raw.all_negative_prompts,
                     seeds: raw.all_seeds,
                     subseeds: raw.all_subseeds,
                     subseed_strength: raw.subseed_strength,
                     width: raw.width,
                     height: raw.height,
-                    sampler: Sampler::try_from(raw.sampler.as_str()).unwrap(),
+                    sampler: Sampler::try_from(raw.sampler_name.as_str()).unwrap(),
                     steps: raw.steps,
 
                     firstphase_width: request.firstphase_width,
                     firstphase_height: request.firstphase_height,
-                    cfg_scale: request.cfg_scale,
-                    denoising_strength: request.denoising_strength,
+                    cfg_scale: raw.cfg_scale,
+                    denoising_strength: raw.denoising_strength,
                     eta: request.eta,
                     tiling: request.tiling,
                     enable_hr: request.enable_hr,
-                    restore_faces: request.restore_faces,
+                    restore_faces: raw.restore_faces,
                     s_churn: request.s_churn,
                     s_noise: request.s_noise,
                     s_tmax: request.s_tmax,
                     s_tmin: request.s_tmin,
-                    seed_resize_from_w,
-                    seed_resize_from_h,
-                    styles: request.styles,
+                    seed_resize_from_w: Some(raw.seed_resize_from_w)
+                        .filter(|v| *v > 0)
+                        .map(|v| v as u32),
+                    seed_resize_from_h: Some(raw.seed_resize_from_h)
+                        .filter(|v| *v > 0)
+                        .map(|v| v as u32),
+                    styles: raw.styles,
+
+                    clip_skip: raw.clip_skip,
+                    face_restoration_model: raw.face_restoration_model,
+                    is_using_inpainting_conditioning: raw.is_using_inpainting_conditioning,
+                    job_timestamp: raw.job_timestamp,
+                    model_hash: raw.sd_model_hash,
                 }
             };
 
@@ -583,8 +605,8 @@ pub struct GenerationResult {
 pub struct GenerationInfo {
     /// The prompts used for each image in the generation.
     pub prompts: Vec<String>,
-    /// The negative prompt that was applied to each image.
-    pub negative_prompt: String,
+    /// The negative prompt for each image in the generation.
+    pub negative_prompts: Vec<String>,
     /// The seeds for the images; each seed corresponds to an image.
     pub seeds: Vec<u64>,
     /// The subseeds for the images; each seed corresponds to an image.
@@ -636,6 +658,17 @@ pub struct GenerationInfo {
 
     /// Any styles applied to the generation
     pub styles: Vec<String>,
+
+    /// CLIP rounds to skip
+    pub clip_skip: usize,
+    /// Face restoration model in use
+    pub face_restoration_model: Option<String>,
+    /// Whether or not inpainting conditioning is being used
+    pub is_using_inpainting_conditioning: bool,
+    /// When the job was run
+    pub job_timestamp: String,
+    /// The hash of the model in use
+    pub model_hash: String,
 }
 
 /// The sampler to use for the generation.
