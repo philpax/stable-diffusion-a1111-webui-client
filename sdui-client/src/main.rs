@@ -122,7 +122,11 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let client = client::Client::new(
         &args.url,
-        args.username.as_deref().zip(args.password.as_deref()),
+        args.username
+            .as_deref()
+            .zip(args.password.as_deref())
+            .map(|(u, p)| client::Authentication::ApiAuth(u, p))
+            .unwrap_or(client::Authentication::None),
     )
     .await?;
 

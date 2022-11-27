@@ -30,6 +30,10 @@ pub enum ClientError {
     /// The UI experienced an internal server error.
     #[error("internal server error")]
     InternalServerError,
+    /// The operation requires access to the SDUI's config, which is not
+    /// accessible through UI auth alone
+    #[error("Config not available")]
+    ConfigNotAvailable,
 
     /// Error returned by `reqwest`.
     #[error("reqwest error")]
@@ -60,24 +64,52 @@ impl ClientError {
 /// Result type for the `Client`.
 pub type Result<T> = core::result::Result<T, ClientError>;
 
+/// The type of authentication to use with a [Client].
+pub enum Authentication<'a> {
+    /// The server is unauthenticated
+    None,
+    /// The server is using API authentication (Authorization header)
+    ApiAuth(&'a str, &'a str),
+    /// The server is using Gradio authentication (/login)
+    GradioAuth(&'a str, &'a str),
+}
+
 /// Interface to the web UI.
 pub struct Client {
     client: RequestClient,
-    config: Config,
+    config: Option<Config>,
 }
 impl Client {
     /// Creates a new `Client` and authenticates to the web UI.
-    pub async fn new(url: &str, authentication: Option<(&str, &str)>) -> Result<Self> {
-        let client = RequestClient::new(url).await?;
+    pub async fn new(url: &str, authentication: Authentication<'_>) -> Result<Self> {
+        let mut client = RequestClient::new(url).await?;
 
-        let mut body = HashMap::new();
-        if let Some((username, password)) = authentication {
-            body.insert("username", username);
-            body.insert("password", password);
+        let mut ui_auth = true;
+        match authentication {
+            Authentication::None => {}
+            Authentication::ApiAuth(username, password) => {
+                client.set_authentication_token(base64::encode(format!("{username}:{password}")));
+                ui_auth = false;
+            }
+            Authentication::GradioAuth(username, password) => {
+                client
+                    .post_raw("login")
+                    .form(&HashMap::<&str, &str>::from_iter([
+                        ("username", username),
+                        ("password", password),
+                    ]))
+                    .send()
+                    .await?;
+            }
         }
-        client.post_raw("login").form(&body).send().await?;
 
-        let config = Config::new(&client).await?;
+        // The config is only available if there is no authentication or the authentication
+        // occurred with Gradio; otherwise, API auth is insufficient to retrieve the config
+        let config = if ui_auth {
+            Some(Config::new(&client).await?)
+        } else {
+            None
+        };
 
         Ok(Self { client, config })
     }
@@ -285,7 +317,11 @@ impl Client {
 
     /// Get the embeddings
     pub async fn embeddings(&self) -> Result<Vec<String>> {
-        self.config.embeddings()
+        if let Some(config) = &self.config {
+            config.embeddings()
+        } else {
+            Err(ClientError::ConfigNotAvailable)
+        }
     }
 
     /// Get the options
@@ -910,6 +946,7 @@ impl Config {
 struct RequestClient {
     url: String,
     client: reqwest::Client,
+    authentication_token: Option<String>,
 }
 impl RequestClient {
     async fn new(url: &str) -> Result<Self> {
@@ -920,7 +957,15 @@ impl RequestClient {
         let url = url.strip_suffix('/').unwrap_or(url).to_owned();
         let client = reqwest::ClientBuilder::new().cookie_store(true).build()?;
 
-        Ok(Self { url, client })
+        Ok(Self {
+            url,
+            client,
+            authentication_token: None,
+        })
+    }
+
+    fn set_authentication_token(&mut self, token: String) {
+        self.authentication_token = Some(format!("Basic {token}"));
     }
 
     fn url(&self, endpoint: &str) -> String {
@@ -943,14 +988,20 @@ impl RequestClient {
         }
     }
 
-    async fn send<R: DeserializeOwned>(builder: reqwest::RequestBuilder) -> Result<R> {
+    async fn send<R: DeserializeOwned>(&self, builder: reqwest::RequestBuilder) -> Result<R> {
+        let builder = if let Some(token) = &self.authentication_token {
+            builder.header("Authorization", token)
+        } else {
+            builder
+        };
         Self::check_for_authentication(builder.send().await?.text().await?)
     }
     async fn get<R: DeserializeOwned>(&self, endpoint: &str) -> Result<R> {
-        Self::send(self.client.get(self.url(endpoint))).await
+        self.send(self.client.get(self.url(endpoint))).await
     }
     async fn post<R: DeserializeOwned, T: Serialize>(&self, endpoint: &str, body: &T) -> Result<R> {
-        Self::send(self.client.post(self.url(endpoint)).json(body)).await
+        self.send(self.client.post(self.url(endpoint)).json(body))
+            .await
     }
     fn post_raw(&self, endpoint: &str) -> reqwest::RequestBuilder {
         self.client.post(self.url(endpoint))
