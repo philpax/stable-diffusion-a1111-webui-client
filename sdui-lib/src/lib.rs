@@ -21,10 +21,16 @@ pub enum ClientError {
     /// The credentials for the `Client` are wrong or missing.
     #[error("Not authenticated")]
     NotAuthenticated,
-    /// There was an error with the request.
+    /// There was an arbitrary error while servicing the request.
+    #[error("error: {message}")]
+    Error {
+        /// The message associated with the error.
+        message: String,
+    },
+    /// The response body was missing some data.
     #[error("invalid response body (expected {expected:?})")]
     InvalidResponse {
-        /// The message associated with the error.
+        /// The data that was expected to be there, but wasn't.
         expected: String,
     },
     /// The UI experienced an internal server error.
@@ -979,9 +985,18 @@ impl RequestClient {
 
         match serde_json::from_str::<HashMap<String, serde_json::Value>>(&body) {
             Ok(json_body) => match json_body.get("detail") {
-                Some(serde_json::Value::String(payload)) if payload == "Not authenticated" => {
-                    Err(ClientError::NotAuthenticated)
+                Some(serde_json::Value::String(message)) => {
+                    if message == "Not authenticated" {
+                        Err(ClientError::NotAuthenticated)
+                    } else {
+                        Err(ClientError::Error {
+                            message: message.clone(),
+                        })
+                    }
                 }
+                Some(other_error) => Err(ClientError::Error {
+                    message: other_error.to_string(),
+                }),
                 _ => Ok(serde_json::from_str(&body)?),
             },
             Err(_) => Ok(serde_json::from_str(&body)?),
