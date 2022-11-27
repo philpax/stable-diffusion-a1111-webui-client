@@ -124,7 +124,12 @@ impl Client {
     ///
     /// The `GenerationTask` can be `await`ed, or its [GenerationTask::progress]
     /// can be retrieved to find out what the status of the generation is.
-    pub fn generate_image_from_text(&self, request: &GenerationRequest) -> GenerationTask {
+    pub fn generate_image_from_text(&self, request: &GenerationRequest) -> Result<GenerationTask> {
+        #[derive(Serialize)]
+        struct OptionsRequest {
+            sd_model_checkpoint: String,
+        }
+
         #[derive(Serialize)]
         struct Request {
             batch_size: i32,
@@ -154,6 +159,10 @@ impl Client {
             tiling: bool,
             width: u32,
         }
+
+        let options_request = request.model.map(|s| OptionsRequest {
+            sd_model_checkpoint: s.title.clone(),
+        });
 
         let request = {
             let d = Request {
@@ -260,6 +269,11 @@ impl Client {
                 steps: usize,
             }
 
+            if let Some(options_request) = options_request {
+                // Used to set the model if requested
+                client.post("sdapi/v1/options", &options_request).await?;
+            }
+
             let response: Response = client.post("sdapi/v1/txt2img", &request).await?;
             let images = response
                 .images
@@ -315,10 +329,10 @@ impl Client {
             Ok(GenerationResult { images, info })
         });
 
-        GenerationTask {
+        Ok(GenerationTask {
             handle,
             client: self.client.clone(),
-        }
+        })
     }
 
     /// Get the embeddings
@@ -609,6 +623,8 @@ pub struct GenerationRequest<'a> {
     pub sampler: Option<Sampler>,
     /// The number of steps
     pub steps: Option<u32>,
+    /// The model override to use. If not supplied, the currently-set model will be used.
+    pub model: Option<&'a Model>,
 
     /// Whether or not the image should be tiled at the edges
     pub tiling: Option<bool>,

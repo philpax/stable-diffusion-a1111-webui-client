@@ -105,6 +105,10 @@ async fn main() -> anyhow::Result<()> {
             /// The sampler to use
             #[arg(long)]
             sampler: Option<Sampler>,
+
+            /// Index of the model to use (from `models`) if desired
+            #[arg(long)]
+            model: Option<usize>,
         },
         Embeddings,
         Options,
@@ -129,18 +133,14 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or(client::Authentication::None),
     )
     .await?;
+    let models = client.models().await?;
 
-    let stdin = std::io::stdin();
     'exit: loop {
-        print!("> ");
-        std::io::stdout().lock().flush()?;
-
-        let mut line = String::new();
-        stdin.lock().read_line(&mut line)?;
-        let line = line.trim();
+        let line = prompt_for_input()?;
         // chain an empty string so that clap ignores arg0
-        let parse_result =
-            Command::try_parse_from(std::iter::once("".to_string()).chain(shlex::Shlex::new(line)));
+        let parse_result = Command::try_parse_from(
+            std::iter::once("".to_string()).chain(shlex::Shlex::new(&line)),
+        );
         let cmd = match parse_result {
             Ok(r) => r,
             Err(err) => {
@@ -159,7 +159,17 @@ async fn main() -> anyhow::Result<()> {
                 width,
                 height,
                 sampler,
+                model,
             } => {
+                let model = if let Some(index) = model {
+                    let model = models.get(index);
+                    if model.is_none() {
+                        println!("warn: specified model is invalid, using set model");
+                    }
+                    model
+                } else {
+                    None
+                };
                 let task = client.generate_image_from_text(&client::GenerationRequest {
                     prompt: &prompt,
                     batch_count: count,
@@ -167,8 +177,9 @@ async fn main() -> anyhow::Result<()> {
                     width,
                     height,
                     sampler: sampler.map(|s| s.into()),
+                    model,
                     ..Default::default()
-                });
+                })?;
                 loop {
                     let progress = task.progress().await?;
                     println!(
@@ -188,30 +199,52 @@ async fn main() -> anyhow::Result<()> {
                     image.save(format!("output_{i}.png"))?;
                 }
             }
-            Command::Embeddings => list_print("Embeddings", client.embeddings().await?),
+            Command::Embeddings => list_unordered_print("Embeddings", client.embeddings().await?),
             Command::Options => println!("Options: {:?}", client.options().await?),
-            Command::Samplers => list_print("Samplers", client.samplers().await?),
-            Command::Upscalers => list_print("Upscalers", client.upscalers().await?),
-            Command::Models => list_print("Models", client.models().await?),
-            Command::Hypernetworks => list_print("Hypernetworks", client.hypernetworks().await?),
-            Command::FaceRestorers => list_print("FaceRestorers", client.face_restorers().await?),
+            Command::Samplers => list_unordered_print("Samplers", client.samplers().await?),
+            Command::Upscalers => list_unordered_print("Upscalers", client.upscalers().await?),
+            Command::Models => list_ordered_print("Models", client.models().await?.iter()),
+            Command::Hypernetworks => {
+                list_unordered_print("Hypernetworks", client.hypernetworks().await?)
+            }
+            Command::FaceRestorers => {
+                list_unordered_print("FaceRestorers", client.face_restorers().await?)
+            }
             Command::RealEsrganModels => {
-                list_print("RealEsrganModels", client.realesrgan_models().await?)
+                list_unordered_print("RealEsrganModels", client.realesrgan_models().await?)
             }
-            Command::PromptStyles => list_print("PromptStyles", client.prompt_styles().await?),
+            Command::PromptStyles => {
+                list_unordered_print("PromptStyles", client.prompt_styles().await?)
+            }
             Command::ArtistCategories => {
-                list_print("ArtistCategories", client.artist_categories().await?)
+                list_unordered_print("ArtistCategories", client.artist_categories().await?)
             }
-            Command::Artists => list_print("Artists", client.artists().await?),
+            Command::Artists => list_unordered_print("Artists", client.artists().await?),
         }
     }
 
     Ok(())
 }
 
-fn list_print<D: Debug>(title: &str, values: impl IntoIterator<Item = D>) {
+fn prompt_for_input() -> anyhow::Result<String> {
+    print!("> ");
+    std::io::stdout().lock().flush()?;
+
+    let mut line = String::new();
+    std::io::stdin().lock().read_line(&mut line)?;
+    Ok(line.trim().to_owned())
+}
+
+fn list_unordered_print<D: Debug>(title: &str, values: impl IntoIterator<Item = D>) {
     println!("{title}");
     for value in values.into_iter() {
         println!("- {value:?}");
+    }
+}
+
+fn list_ordered_print<D: Debug>(title: &str, values: impl Iterator<Item = D>) {
+    println!("{title}");
+    for (index, value) in values.enumerate() {
+        println!("{index}: {value:?}");
     }
 }
