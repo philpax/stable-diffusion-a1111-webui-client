@@ -46,6 +46,9 @@ pub enum ClientError {
     /// Error returned by `tokio` due to a failure to join the task.
     #[error("tokio join error")]
     TokioJoinError(#[from] tokio::task::JoinError),
+    /// Error returned by `chrono` when trying to parse a datetime.
+    #[error("chrono parse error")]
+    ChronoParseError(#[from] chrono::format::ParseError),
 }
 impl ClientError {
     fn invalid_response(expected: &str) -> Self {
@@ -261,7 +264,12 @@ impl Client {
                     clip_skip: raw.clip_skip,
                     face_restoration_model: raw.face_restoration_model,
                     is_using_inpainting_conditioning: raw.is_using_inpainting_conditioning,
-                    job_timestamp: raw.job_timestamp,
+                    job_timestamp: chrono::NaiveDateTime::parse_from_str(
+                        &raw.job_timestamp,
+                        "%Y%m%d%H%M%S",
+                    )?
+                    .and_local_timezone(chrono::Local)
+                    .unwrap(),
                     model_hash: raw.sd_model_hash,
                 }
             };
@@ -666,7 +674,7 @@ pub struct GenerationInfo {
     /// Whether or not inpainting conditioning is being used
     pub is_using_inpainting_conditioning: bool,
     /// When the job was run
-    pub job_timestamp: String,
+    pub job_timestamp: chrono::DateTime<chrono::Local>,
     /// The hash of the model in use
     pub model_hash: String,
 }
