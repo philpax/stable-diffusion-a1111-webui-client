@@ -843,7 +843,7 @@ impl Config {
                 .ok_or_else(|| ClientError::invalid_response("components"))?
                 .as_array()
                 .ok_or_else(|| ClientError::invalid_response("components to be an array"))?
-                .into_iter()
+                .iter()
                 .filter_map(|v| v.as_object())
                 .filter_map(|o| {
                     let id = o.get("id")?.as_u64()? as u32;
@@ -917,7 +917,7 @@ impl RequestClient {
             return Err(ClientError::InvalidUrl);
         }
 
-        let url = url.strip_suffix("/").unwrap_or(url).to_owned();
+        let url = url.strip_suffix('/').unwrap_or(url).to_owned();
         let client = reqwest::ClientBuilder::new().cookie_store(true).build()?;
 
         Ok(Self { url, client })
@@ -961,7 +961,7 @@ fn extract_string_array(value: &serde_json::Value) -> Option<Vec<String>> {
     Some(
         value
             .as_array()?
-            .into_iter()
+            .iter()
             .flat_map(|s| Some(s.as_str()?.to_owned()))
             .collect(),
     )
