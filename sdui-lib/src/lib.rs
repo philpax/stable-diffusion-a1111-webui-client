@@ -179,7 +179,7 @@ impl Client {
                 seed_resize_from_w: -1,
                 batch_size: 1,
                 n_iter: 1,
-                steps: 50,
+                steps: 20,
                 cfg_scale: 7.0,
                 width: 512,
                 height: 512,
