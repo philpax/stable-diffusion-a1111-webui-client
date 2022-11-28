@@ -246,11 +246,11 @@ impl Client {
                 all_negative_prompts: Vec<String>,
                 all_prompts: Vec<String>,
 
-                all_seeds: Vec<u64>,
+                all_seeds: Vec<i64>,
                 seed_resize_from_h: i32,
                 seed_resize_from_w: i32,
 
-                all_subseeds: Vec<u64>,
+                all_subseeds: Vec<i64>,
                 subseed_strength: f32,
 
                 cfg_scale: f32,
@@ -266,7 +266,7 @@ impl Client {
                 width: u32,
                 height: u32,
                 sampler_name: String,
-                steps: usize,
+                steps: u32,
             }
 
             if let Some(options_request) = options_request {
@@ -674,9 +674,9 @@ pub struct GenerationInfo {
     /// The negative prompt for each image in the generation.
     pub negative_prompts: Vec<String>,
     /// The seeds for the images; each seed corresponds to an image.
-    pub seeds: Vec<u64>,
+    pub seeds: Vec<i64>,
     /// The subseeds for the images; each seed corresponds to an image.
-    pub subseeds: Vec<u64>,
+    pub subseeds: Vec<i64>,
     /// The strength of the subseed.
     pub subseed_strength: f32,
     /// The width of the generated images.
@@ -686,7 +686,7 @@ pub struct GenerationInfo {
     /// The sampler that was used for this generation.
     pub sampler: Sampler,
     /// The number of steps that were used for each generation.
-    pub steps: usize,
+    pub steps: u32,
 
     /// The width of the first phase of the generated image
     pub firstphase_width: u32,
