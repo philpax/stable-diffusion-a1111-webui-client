@@ -191,7 +191,7 @@ impl Client {
                 s_tmax: 0.0,
                 s_tmin: 0.0,
                 s_noise: 1.0,
-                sampler_index: "Euler".to_owned(),
+                sampler_index: Sampler::EulerA.to_string(),
             };
             let r = request;
             Request {
