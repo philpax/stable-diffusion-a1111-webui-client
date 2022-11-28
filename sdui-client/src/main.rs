@@ -9,54 +9,45 @@ use std::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-    pub enum Sampler {
-        /// Euler a
-        EulerA,
-        /// Euler
-        Euler,
-        /// LMS
-        Lms,
-        /// Heun
-        Heun,
-        /// DPM2
-        Dpm2,
-        /// DPM2 a
-        Dpm2A,
-        /// DPM fast
-        DpmFast,
-        /// DPM adaptive
-        DpmAdaptive,
-        /// LMS Karras
-        LmsKarras,
-        /// DPM2 Karras
-        Dpm2Karras,
-        /// DPM2 a Karras
-        Dpm2AKarras,
-        /// DDIM
-        Ddim,
-        /// PLMS
-        Plms,
-    }
-    impl From<Sampler> for client::Sampler {
-        fn from(s: Sampler) -> Self {
-            match s {
-                Sampler::EulerA => client::Sampler::EulerA,
-                Sampler::Euler => client::Sampler::Euler,
-                Sampler::Lms => client::Sampler::Lms,
-                Sampler::Heun => client::Sampler::Heun,
-                Sampler::Dpm2 => client::Sampler::Dpm2,
-                Sampler::Dpm2A => client::Sampler::Dpm2A,
-                Sampler::DpmFast => client::Sampler::DpmFast,
-                Sampler::DpmAdaptive => client::Sampler::DpmAdaptive,
-                Sampler::LmsKarras => client::Sampler::LmsKarras,
-                Sampler::Dpm2Karras => client::Sampler::Dpm2Karras,
-                Sampler::Dpm2AKarras => client::Sampler::Dpm2AKarras,
-                Sampler::Ddim => client::Sampler::Ddim,
-                Sampler::Plms => client::Sampler::Plms,
+    macro_rules! define_samplers {
+        ($(($name:ident, $friendly_name:literal)),*) => {
+            #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+            pub enum Sampler {
+                $(
+                    #[doc = $friendly_name]
+                    $name
+                ),*
+            }
+
+            impl From<Sampler> for client::Sampler {
+                fn from(s: Sampler) -> Self {
+                    match s {
+                        $(Sampler::$name => client::Sampler::$name,)*
+                    }
+                }
             }
         }
     }
+
+    define_samplers!(
+        (EulerA, "Euler a"),
+        (Euler, "Euler"),
+        (Lms, "LMS"),
+        (Heun, "Heun"),
+        (Dpm2, "DPM2"),
+        (Dpm2A, "DPM2 a"),
+        (DpmPP2SA, "DPM++ 2S a"),
+        (DpmPP2M, "DPM++ 2M"),
+        (DpmFast, "DPM fast"),
+        (DpmAdaptive, "DPM adaptive"),
+        (LmsKarras, "LMS Karras"),
+        (Dpm2Karras, "DPM2 Karras"),
+        (Dpm2AKarras, "DPM2 a Karras"),
+        (DpmPP2SAKarras, "DPM++ 2S a Karras"),
+        (DpmPP2MKarras, "DPM++ 2M Karras"),
+        (Ddim, "DDIM"),
+        (Plms, "PLMS")
+    );
 
     /// Client for Automatic1111's Stable Diffusion web UI
     #[derive(Parser)]
