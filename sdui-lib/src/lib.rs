@@ -740,7 +740,7 @@ pub struct GenerationInfo {
 macro_rules! define_samplers {
     ($(($name:ident, $friendly_name:literal)),*) => {
         /// The sampler to use for the generation.
-        #[derive(Clone, Copy, Debug)]
+        #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
         pub enum Sampler {
             $(
                 #[doc = $friendly_name]
