@@ -278,7 +278,7 @@ impl Client {
             let images = response
                 .images
                 .iter()
-                .map(|b64| Ok(image::load_from_memory(&base64::decode(b64)?)?))
+                .map(|b64| decode_image(b64.as_str()))
                 .collect::<Result<Vec<_>>>()?;
             let info = {
                 let raw: InfoResponse = serde_json::from_str(&response.info)?;
@@ -528,6 +528,10 @@ impl Client {
     }
 }
 
+fn decode_image(b64: &str) -> Result<DynamicImage> {
+    Ok(image::load_from_memory(&base64::decode(b64)?)?)
+}
+
 /// Represents an ongoing generation.
 pub struct GenerationTask {
     handle: tokio::task::JoinHandle<Result<GenerationResult>>,
@@ -553,6 +557,7 @@ impl GenerationTask {
             return Ok(GenerationProgress {
                 eta_seconds: 0.0,
                 progress_factor: 1.0,
+                current_image: None,
             });
         }
 
@@ -560,12 +565,17 @@ impl GenerationTask {
         struct Response {
             eta_relative: f32,
             progress: f32,
+            current_image: Option<String>,
         }
 
         let response: Response = self.client.get("sdapi/v1/progress").await?;
         Ok(GenerationProgress {
             eta_seconds: response.eta_relative.max(0.0),
             progress_factor: response.progress.clamp(0.0, 1.0),
+            current_image: response
+                .current_image
+                .map(|i| decode_image(&i))
+                .transpose()?,
         })
     }
 }
@@ -579,6 +589,8 @@ pub struct GenerationProgress {
     pub eta_seconds: f32,
     /// How much of the generation is complete, from 0 to 1
     pub progress_factor: f32,
+    /// The current image being generated, if available.
+    pub current_image: Option<DynamicImage>,
 }
 impl GenerationProgress {
     /// Whether or not the generation has completed.
