@@ -278,7 +278,7 @@ impl Client {
             let images = response
                 .images
                 .iter()
-                .map(|b64| decode_image(b64.as_str()))
+                .map(|b64| decode_image_from_base64(b64.as_str()))
                 .collect::<Result<Vec<_>>>()?;
             let info = {
                 let raw: InfoResponse = serde_json::from_str(&response.info)?;
@@ -335,6 +335,40 @@ impl Client {
         })
     }
 
+    /// Interrogates the given `image` with the `interrogator` to generate a caption.
+    pub async fn interrogate(
+        &self,
+        image: &DynamicImage,
+        interrogator: Interrogator,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct RequestRaw<'a> {
+            image: &'a str,
+            model: &'a str,
+        }
+
+        #[derive(Deserialize)]
+        struct ResponseRaw {
+            caption: String,
+        }
+
+        let response: ResponseRaw = self
+            .client
+            .post(
+                "sdapi/v1/interrogate",
+                &RequestRaw {
+                    image: &encode_image_to_base64(image)?,
+                    model: match interrogator {
+                        Interrogator::Clip => "clip",
+                        Interrogator::DeepDanbooru => "deepdanbooru",
+                    },
+                },
+            )
+            .await?;
+
+        Ok(response.caption)
+    }
+
     /// Get the embeddings
     pub async fn embeddings(&self) -> Result<Vec<String>> {
         if let Some(config) = &self.config {
@@ -346,7 +380,7 @@ impl Client {
 
     /// Get the options
     pub async fn options(&self) -> Result<Options> {
-        #[derive(Serialize, Deserialize)]
+        #[derive(Deserialize)]
         struct OptionsRaw {
             s_churn: f32,
             s_noise: f32,
@@ -528,8 +562,15 @@ impl Client {
     }
 }
 
-fn decode_image(b64: &str) -> Result<DynamicImage> {
+fn decode_image_from_base64(b64: &str) -> Result<DynamicImage> {
     Ok(image::load_from_memory(&base64::decode(b64)?)?)
+}
+
+fn encode_image_to_base64(image: &DynamicImage) -> image::ImageResult<String> {
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut bytes);
+    image.write_to(&mut cursor, image::ImageOutputFormat::Png)?;
+    Ok(base64::encode(bytes))
 }
 
 /// Represents an ongoing generation.
@@ -574,7 +615,7 @@ impl GenerationTask {
             progress_factor: response.progress.clamp(0.0, 1.0),
             current_image: response
                 .current_image
-                .map(|i| decode_image(&i))
+                .map(|i| decode_image_from_base64(&i))
                 .transpose()?,
         })
     }
@@ -749,17 +790,17 @@ pub struct GenerationInfo {
     pub model_hash: String,
 }
 
-macro_rules! define_samplers {
-    ($(($name:ident, $friendly_name:literal)),*) => {
-        /// The sampler to use for the generation.
+macro_rules! define_user_friendly_enum {
+    ($enum_name:ident, $doc:literal, {$(($name:ident, $friendly_name:literal)),*}) => {
+        #[doc = $doc]
         #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-        pub enum Sampler {
+        pub enum $enum_name {
             $(
                 #[doc = $friendly_name]
                 $name
             ),*
         }
-        impl ToString for Sampler {
+        impl ToString for $enum_name {
             fn to_string(&self) -> String {
                 match self {
                     $(
@@ -769,10 +810,10 @@ macro_rules! define_samplers {
                 .to_string()
             }
         }
-        impl TryFrom<&str> for Sampler {
+        impl TryFrom<&str> for $enum_name {
             type Error = ();
 
-            fn try_from(s: &str) -> core::result::Result<Sampler, ()> {
+            fn try_from(s: &str) -> core::result::Result<Self, ()> {
                 match s {
                     $(
                         $friendly_name => Ok(Self::$name),
@@ -781,35 +822,48 @@ macro_rules! define_samplers {
                 }
             }
         }
-        impl Sampler {
+        impl $enum_name {
             /// All of the possible values.
-            pub const VALUES: &[Sampler] = &[
+            pub const VALUES: &[Self] = &[
                 $(Self::$name),*
             ];
         }
     }
 }
 
-define_samplers!(
-    (EulerA, "Euler a"),
-    (Euler, "Euler"),
-    (Lms, "LMS"),
-    (Heun, "Heun"),
-    (Dpm2, "DPM2"),
-    (Dpm2A, "DPM2 a"),
-    (DpmPP2SA, "DPM++ 2S a"),
-    (DpmPP2M, "DPM++ 2M"),
-    (DpmPPSDE, "DPM++ SDE"),
-    (DpmFast, "DPM fast"),
-    (DpmAdaptive, "DPM adaptive"),
-    (LmsKarras, "LMS Karras"),
-    (Dpm2Karras, "DPM2 Karras"),
-    (Dpm2AKarras, "DPM2 a Karras"),
-    (DpmPP2SAKarras, "DPM++ 2S a Karras"),
-    (DpmPP2MKarras, "DPM++ 2M Karras"),
-    (DpmPPSDEKarras, "DPM++ SDE Karras"),
-    (Ddim, "DDIM"),
-    (Plms, "PLMS")
+define_user_friendly_enum!(
+    Sampler,
+    "The sampler to use for the generation.",
+    {
+        (EulerA, "Euler a"),
+        (Euler, "Euler"),
+        (Lms, "LMS"),
+        (Heun, "Heun"),
+        (Dpm2, "DPM2"),
+        (Dpm2A, "DPM2 a"),
+        (DpmPP2SA, "DPM++ 2S a"),
+        (DpmPP2M, "DPM++ 2M"),
+        (DpmPPSDE, "DPM++ SDE"),
+        (DpmFast, "DPM fast"),
+        (DpmAdaptive, "DPM adaptive"),
+        (LmsKarras, "LMS Karras"),
+        (Dpm2Karras, "DPM2 Karras"),
+        (Dpm2AKarras, "DPM2 a Karras"),
+        (DpmPP2SAKarras, "DPM++ 2S a Karras"),
+        (DpmPP2MKarras, "DPM++ 2M Karras"),
+        (DpmPPSDEKarras, "DPM++ SDE Karras"),
+        (Ddim, "DDIM"),
+        (Plms, "PLMS")
+    }
+);
+
+define_user_friendly_enum!(
+    Interrogator,
+    "Supported interrogators for [Client::interrogate]",
+    {
+        (Clip, "https://github.com/pharmapsychotic/clip-interrogator"),
+        (DeepDanbooru, "https://github.com/KichangKim/DeepDanbooru")
+    }
 );
 
 /// The currently set options for the UI

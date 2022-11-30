@@ -5,7 +5,8 @@ version = "0.1.0"
 
 [dependencies]
 anyhow = "1.0.66"
-clap = { version = "4.0.18", features = ["derive"] }
+clap = {version = "4.0.18", features = ["derive"]}
+image = "0.24.5"
 shlex = "1.1.0"
 stable-diffusion-a1111-webui-client = {path = "../sdui-lib"}
-tokio = { version = "1.21.2", features = ["full"] }
+tokio = {version = "1.21.2", features = ["full"]}

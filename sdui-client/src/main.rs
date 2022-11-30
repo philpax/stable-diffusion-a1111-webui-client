@@ -4,52 +4,57 @@ use std::{
     fmt::Debug,
     io::{BufRead, Write},
     iter::IntoIterator,
+    path::PathBuf,
     time::Duration,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    macro_rules! define_samplers {
-        ($(($name:ident, $friendly_name:literal)),*) => {
+    macro_rules! remap_enum {
+        ($enum_name:ident, {$($name:ident,)*}) => {
             #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-            pub enum Sampler {
+            pub enum $enum_name {
                 $(
-                    #[doc = $friendly_name]
                     $name
                 ),*
             }
 
-            impl From<Sampler> for client::Sampler {
-                fn from(s: Sampler) -> Self {
+            impl From<$enum_name> for client::$enum_name {
+                fn from(s: $enum_name) -> Self {
                     match s {
-                        $(Sampler::$name => client::Sampler::$name,)*
+                        $($enum_name::$name => client::$enum_name::$name,)*
                     }
                 }
             }
         }
     }
 
-    define_samplers!(
-        (EulerA, "Euler a"),
-        (Euler, "Euler"),
-        (Lms, "LMS"),
-        (Heun, "Heun"),
-        (Dpm2, "DPM2"),
-        (Dpm2A, "DPM2 a"),
-        (DpmPP2SA, "DPM++ 2S a"),
-        (DpmPP2M, "DPM++ 2M"),
-        (DpmPPSDE, "DPM++ SDE"),
-        (DpmFast, "DPM fast"),
-        (DpmAdaptive, "DPM adaptive"),
-        (LmsKarras, "LMS Karras"),
-        (Dpm2Karras, "DPM2 Karras"),
-        (Dpm2AKarras, "DPM2 a Karras"),
-        (DpmPP2SAKarras, "DPM++ 2S a Karras"),
-        (DpmPP2MKarras, "DPM++ 2M Karras"),
-        (DpmPPSDEKarras, "DPM++ SDE Karras"),
-        (Ddim, "DDIM"),
-        (Plms, "PLMS")
-    );
+    remap_enum!(Sampler, {
+        EulerA,
+        Euler,
+        Lms,
+        Heun,
+        Dpm2,
+        Dpm2A,
+        DpmPP2SA,
+        DpmPP2M,
+        DpmPPSDE,
+        DpmFast,
+        DpmAdaptive,
+        LmsKarras,
+        Dpm2Karras,
+        Dpm2AKarras,
+        DpmPP2SAKarras,
+        DpmPP2MKarras,
+        DpmPPSDEKarras,
+        Ddim,
+        Plms,
+    });
+
+    remap_enum!(Interrogator, {
+        Clip,
+        DeepDanbooru,
+    });
 
     /// Client for Automatic1111's Stable Diffusion web UI
     #[derive(Parser)]
@@ -102,6 +107,16 @@ async fn main() -> anyhow::Result<()> {
             /// Index of the model to use (from `models`) if desired
             #[arg(long)]
             model: Option<usize>,
+        },
+        /// Interrogates the given image with the specified model
+        Interrogate {
+            /// The image to interrogate
+            #[arg()]
+            image: PathBuf,
+
+            /// The interrogator to use
+            #[arg()]
+            interrogator: Interrogator,
         },
         Embeddings,
         Options,
@@ -191,6 +206,14 @@ async fn main() -> anyhow::Result<()> {
                 for (i, image) in result.images.into_iter().enumerate() {
                     image.save(format!("output_{i}.png"))?;
                 }
+            }
+            Command::Interrogate {
+                image,
+                interrogator,
+            } => {
+                let image = image::open(image)?;
+                let result = client.interrogate(&image, interrogator.into()).await?;
+                println!("result: {}", result);
             }
             Command::Embeddings => list_unordered_print("Embeddings", client.embeddings().await?),
             Command::Options => println!("Options: {:?}", client.options().await?),
