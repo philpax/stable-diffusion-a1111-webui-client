@@ -861,8 +861,8 @@ define_user_friendly_enum!(
     Interrogator,
     "Supported interrogators for [Client::interrogate]",
     {
-        (Clip, "https://github.com/pharmapsychotic/clip-interrogator"),
-        (DeepDanbooru, "https://github.com/KichangKim/DeepDanbooru")
+        (Clip, "CLIP"),
+        (DeepDanbooru, "DeepDanbooru")
     }
 );
 
