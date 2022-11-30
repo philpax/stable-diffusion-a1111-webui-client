@@ -38,6 +38,7 @@ async fn main() -> anyhow::Result<()> {
         (Dpm2A, "DPM2 a"),
         (DpmPP2SA, "DPM++ 2S a"),
         (DpmPP2M, "DPM++ 2M"),
+        (DpmPPSDE, "DPM++ SDE"),
         (DpmFast, "DPM fast"),
         (DpmAdaptive, "DPM adaptive"),
         (LmsKarras, "LMS Karras"),
@@ -45,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
         (Dpm2AKarras, "DPM2 a Karras"),
         (DpmPP2SAKarras, "DPM++ 2S a Karras"),
         (DpmPP2MKarras, "DPM++ 2M Karras"),
+        (DpmPPSDEKarras, "DPM++ SDE Karras"),
         (Ddim, "DDIM"),
         (Plms, "PLMS")
     );
