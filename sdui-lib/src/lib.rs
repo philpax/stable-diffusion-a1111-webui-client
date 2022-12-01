@@ -793,21 +793,25 @@ pub struct GenerationInfo {
 macro_rules! define_user_friendly_enum {
     ($enum_name:ident, $doc:literal, {$(($name:ident, $friendly_name:literal)),*}) => {
         #[doc = $doc]
-        #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+        #[derive(Clone, Copy, Serialize, Deserialize)]
         pub enum $enum_name {
             $(
                 #[doc = $friendly_name]
                 $name
             ),*
         }
-        impl ToString for $enum_name {
-            fn to_string(&self) -> String {
-                match self {
+        impl std::fmt::Display for $enum_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", match self {
                     $(
                         Self::$name => $friendly_name
                     ),*
-                }
-                .to_string()
+                })
+            }
+        }
+        impl std::fmt::Debug for $enum_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(self, f)
             }
         }
         impl TryFrom<&str> for $enum_name {
