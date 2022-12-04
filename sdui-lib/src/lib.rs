@@ -369,6 +369,31 @@ impl Client {
         Ok(response.caption)
     }
 
+    /// Gets the PNG info for the image (assumed to be valid PNG)
+    pub async fn png_info(&self, image_bytes: &[u8]) -> Result<String> {
+        #[derive(Serialize)]
+        struct RequestRaw<'a> {
+            image: &'a str,
+        }
+
+        #[derive(Deserialize)]
+        struct ResponseRaw {
+            info: String,
+        }
+
+        let response: ResponseRaw = self
+            .client
+            .post(
+                "sdapi/v1/png-info",
+                &RequestRaw {
+                    image: &base64::encode(image_bytes),
+                },
+            )
+            .await?;
+
+        Ok(response.info)
+    }
+
     /// Get the embeddings
     pub async fn embeddings(&self) -> Result<Vec<String>> {
         if let Some(config) = &self.config {

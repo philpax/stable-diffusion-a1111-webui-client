@@ -118,6 +118,12 @@ async fn main() -> anyhow::Result<()> {
             #[arg()]
             interrogator: Interrogator,
         },
+        /// Prints the PNG info for the given image, if available
+        PngInfo {
+            /// The PNG to read
+            #[arg()]
+            image: PathBuf,
+        },
         Embeddings,
         Options,
         Samplers,
@@ -213,6 +219,10 @@ async fn main() -> anyhow::Result<()> {
             } => {
                 let image = image::open(image)?;
                 let result = client.interrogate(&image, interrogator.into()).await?;
+                println!("result: {}", result);
+            }
+            Command::PngInfo { image } => {
+                let result = client.png_info(&std::fs::read(image)?).await?;
                 println!("result: {}", result);
             }
             Command::Embeddings => list_unordered_print("Embeddings", client.embeddings().await?),
