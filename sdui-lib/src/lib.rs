@@ -120,28 +120,20 @@ impl Client {
         Ok(Self { client, config })
     }
 
-    /// Generates an image from the provided `request`.
+    /// Generates an image from the provided `request`, which contains a prompt.
     ///
     /// The `GenerationTask` can be `await`ed, or its [GenerationTask::progress]
     /// can be retrieved to find out what the status of the generation is.
-    pub fn generate_image_from_text(
+    pub fn generate_from_text(
         &self,
         request: &TextToImageGenerationRequest,
     ) -> Result<GenerationTask> {
-        #[derive(Serialize)]
-        struct OptionsRequest {
-            sd_model_checkpoint: String,
-        }
-
         #[derive(Serialize)]
         struct Request {
             batch_size: i32,
             cfg_scale: f32,
             denoising_strength: f32,
-            enable_hr: bool,
             eta: f32,
-            firstphase_height: u32,
-            firstphase_width: u32,
             height: u32,
             n_iter: u32,
             negative_prompt: String,
@@ -161,13 +153,13 @@ impl Client {
             subseed_strength: f32,
             tiling: bool,
             width: u32,
+
+            enable_hr: bool,
+            firstphase_height: u32,
+            firstphase_width: u32,
         }
 
-        let options_request = request.base.model.map(|s| OptionsRequest {
-            sd_model_checkpoint: s.title.clone(),
-        });
-
-        let request = {
+        let json_request = {
             let d = Request {
                 enable_hr: false,
                 denoising_strength: 0.0,
@@ -237,106 +229,162 @@ impl Client {
             }
         };
 
-        let client = self.client.clone();
-        let handle = tokio::task::spawn(async move {
-            #[derive(Deserialize)]
-            struct Response {
-                images: Vec<String>,
-                info: String,
-            }
+        self.issue_generation_task(
+            request.base.model,
+            "sdapi/v1/txt2img".to_string(),
+            json_request,
+        )
+    }
 
-            #[derive(Deserialize)]
-            pub struct InfoResponse {
-                all_negative_prompts: Vec<String>,
-                all_prompts: Vec<String>,
+    /// Generates an image from the provided `request`, which contains both an image and a prompt.
+    ///
+    /// The `GenerationTask` can be `await`ed, or its [GenerationTask::progress]
+    /// can be retrieved to find out what the status of the generation is.
+    pub fn generate_from_image_and_text(
+        &self,
+        request: &ImageToImageGenerationRequest,
+    ) -> Result<GenerationTask> {
+        #[derive(Serialize)]
+        struct Request {
+            batch_size: i32,
+            cfg_scale: f32,
+            denoising_strength: f32,
+            eta: f32,
+            height: u32,
+            n_iter: u32,
+            negative_prompt: String,
+            prompt: String,
+            restore_faces: bool,
+            s_churn: f32,
+            s_noise: f32,
+            s_tmax: f32,
+            s_tmin: f32,
+            sampler_index: String,
+            seed: i64,
+            seed_resize_from_h: i32,
+            seed_resize_from_w: i32,
+            steps: u32,
+            styles: Vec<String>,
+            subseed: i64,
+            subseed_strength: f32,
+            tiling: bool,
+            width: u32,
 
-                all_seeds: Vec<i64>,
-                seed_resize_from_h: i32,
-                seed_resize_from_w: i32,
+            init_images: Vec<String>,
+            resize_mode: u32,
+            mask: Option<String>,
+            mask_blur: u32,
+            inpainting_fill: u32,
+            inpaint_full_res: bool,
+            inpaint_full_res_padding: u32,
+            inpainting_mask_invert: u32,
+            include_init_images: bool,
+        }
 
-                all_subseeds: Vec<i64>,
-                subseed_strength: f32,
+        let json_request = {
+            let d = Request {
+                denoising_strength: 0.0,
+                prompt: String::new(),
+                styles: vec![],
+                seed: -1,
+                subseed: -1,
+                subseed_strength: 0.0,
+                seed_resize_from_h: -1,
+                seed_resize_from_w: -1,
+                batch_size: 1,
+                n_iter: 1,
+                steps: 20,
+                cfg_scale: 7.0,
+                width: 512,
+                height: 512,
+                restore_faces: false,
+                tiling: false,
+                negative_prompt: String::new(),
+                eta: 0.0,
+                s_churn: 0.0,
+                s_tmax: 0.0,
+                s_tmin: 0.0,
+                s_noise: 1.0,
+                sampler_index: Sampler::EulerA.to_string(),
 
-                cfg_scale: f32,
-                clip_skip: usize,
-                denoising_strength: f32,
-                face_restoration_model: Option<String>,
-                is_using_inpainting_conditioning: bool,
-                job_timestamp: String,
-                restore_faces: bool,
-                sd_model_hash: String,
-                styles: Vec<String>,
-
-                width: u32,
-                height: u32,
-                sampler_name: String,
-                steps: u32,
-            }
-
-            if let Some(options_request) = options_request {
-                // Used to set the model if requested
-                client.post("sdapi/v1/options", &options_request).await?;
-            }
-
-            let response: Response = client.post("sdapi/v1/txt2img", &request).await?;
-            let images = response
-                .images
-                .iter()
-                .map(|b64| decode_image_from_base64(b64.as_str()))
-                .collect::<Result<Vec<_>>>()?;
-            let info = {
-                let raw: InfoResponse = serde_json::from_str(&response.info)?;
-                GenerationInfo {
-                    prompts: raw.all_prompts,
-                    negative_prompts: raw.all_negative_prompts,
-                    seeds: raw.all_seeds,
-                    subseeds: raw.all_subseeds,
-                    subseed_strength: raw.subseed_strength,
-                    width: raw.width,
-                    height: raw.height,
-                    sampler: Sampler::try_from(raw.sampler_name.as_str()).unwrap(),
-                    steps: raw.steps,
-
-                    firstphase_width: request.firstphase_width,
-                    firstphase_height: request.firstphase_height,
-                    cfg_scale: raw.cfg_scale,
-                    denoising_strength: raw.denoising_strength,
-                    eta: request.eta,
-                    tiling: request.tiling,
-                    enable_hr: request.enable_hr,
-                    restore_faces: raw.restore_faces,
-                    s_churn: request.s_churn,
-                    s_noise: request.s_noise,
-                    s_tmax: request.s_tmax,
-                    s_tmin: request.s_tmin,
-                    seed_resize_from_w: Some(raw.seed_resize_from_w)
-                        .filter(|v| *v > 0)
-                        .map(|v| v as u32),
-                    seed_resize_from_h: Some(raw.seed_resize_from_h)
-                        .filter(|v| *v > 0)
-                        .map(|v| v as u32),
-                    styles: raw.styles,
-
-                    clip_skip: raw.clip_skip,
-                    face_restoration_model: raw.face_restoration_model,
-                    is_using_inpainting_conditioning: raw.is_using_inpainting_conditioning,
-                    job_timestamp: chrono::NaiveDateTime::parse_from_str(
-                        &raw.job_timestamp,
-                        "%Y%m%d%H%M%S",
-                    )?
-                    .and_local_timezone(chrono::Local)
-                    .unwrap(),
-                    model_hash: raw.sd_model_hash,
-                }
+                init_images: vec![],
+                resize_mode: 0,
+                mask: None,
+                mask_blur: 4,
+                inpainting_fill: 0,
+                inpaint_full_res: true,
+                inpaint_full_res_padding: 0,
+                inpainting_mask_invert: 0,
+                include_init_images: false,
             };
+            let r = request;
+            let b = &request.base;
+            Request {
+                batch_size: b.batch_size.map(|i| i as i32).unwrap_or(d.batch_size),
+                cfg_scale: b.cfg_scale.unwrap_or(d.cfg_scale),
+                denoising_strength: b.denoising_strength.unwrap_or(d.denoising_strength),
+                eta: b.eta.unwrap_or(d.eta),
+                height: b.height.unwrap_or(d.height),
+                n_iter: b.batch_count.unwrap_or(d.n_iter),
+                negative_prompt: b
+                    .negative_prompt
+                    .map(|s| s.to_owned())
+                    .unwrap_or(d.negative_prompt),
+                prompt: b.prompt.to_owned(),
+                restore_faces: b.restore_faces.unwrap_or(d.restore_faces),
+                s_churn: b.s_churn.unwrap_or(d.s_churn),
+                s_noise: b.s_noise.unwrap_or(d.s_noise),
+                s_tmax: b.s_tmax.unwrap_or(d.s_tmax),
+                s_tmin: b.s_tmin.unwrap_or(d.s_tmin),
+                sampler_index: b.sampler.map(|s| s.to_string()).unwrap_or(d.sampler_index),
+                seed: b.seed.unwrap_or(d.seed),
+                seed_resize_from_h: b
+                    .seed_resize_from_h
+                    .map(|i| i as i32)
+                    .unwrap_or(d.seed_resize_from_h),
+                seed_resize_from_w: b
+                    .seed_resize_from_w
+                    .map(|i| i as i32)
+                    .unwrap_or(d.seed_resize_from_w),
+                steps: b.steps.unwrap_or(d.steps),
+                styles: b.styles.clone().unwrap_or(d.styles),
+                subseed: b.subseed.unwrap_or(d.subseed),
+                subseed_strength: b.subseed_strength.unwrap_or(d.subseed_strength),
+                tiling: b.tiling.unwrap_or(d.tiling),
+                width: b.width.unwrap_or(d.width),
 
-            Ok(GenerationResult { images, info })
-        });
+                init_images: r
+                    .images
+                    .iter()
+                    .map(|i| encode_image_to_base64(i))
+                    .collect::<core::result::Result<Vec<_>, _>>()?,
+                resize_mode: match r.resize_mode {
+                    ResizeMode::Resize => 0,
+                    ResizeMode::CropAndResize => 1,
+                    ResizeMode::ResizeAndFill => 2,
+                },
+                mask: r.mask.as_ref().map(encode_image_to_base64).transpose()?,
+                mask_blur: r.mask_blur.unwrap_or(d.mask_blur),
+                inpainting_fill: match r.inpainting_fill_mode {
+                    InpaintingFillMode::Fill => 0,
+                    InpaintingFillMode::Original => 1,
+                    InpaintingFillMode::LatentNoise => 2,
+                    InpaintingFillMode::LatentNothing => 3,
+                },
+                inpaint_full_res: r.inpaint_full_resolution,
+                inpaint_full_res_padding: r
+                    .inpaint_full_resolution_padding
+                    .unwrap_or(d.inpaint_full_res_padding),
+                inpainting_mask_invert: r.inpainting_mask_invert as _,
+                include_init_images: false,
+            }
+        };
 
-        Ok(GenerationTask {
-            handle,
-            client: self.client.clone(),
-        })
+        self.issue_generation_task(
+            request.base.model,
+            "sdapi/v1/img2img".to_string(),
+            json_request,
+        )
     }
 
     /// Interrogates the given `image` with the `interrogator` to generate a caption.
@@ -590,6 +638,115 @@ impl Client {
             })
     }
 }
+impl Client {
+    fn issue_generation_task<R: Serialize + Send + Sync + 'static>(
+        &self,
+        model: Option<&Model>,
+        url: String,
+        request: R,
+    ) -> Result<GenerationTask> {
+        #[derive(Serialize)]
+        struct OptionsRequest {
+            sd_model_checkpoint: String,
+        }
+
+        let options_request = model.map(|s| OptionsRequest {
+            sd_model_checkpoint: s.title.clone(),
+        });
+
+        let client = self.client.clone();
+        let handle = tokio::task::spawn(async move {
+            #[derive(Deserialize)]
+            struct Response {
+                images: Vec<String>,
+                info: String,
+            }
+
+            #[derive(Deserialize)]
+            pub struct InfoResponse {
+                all_negative_prompts: Vec<String>,
+                all_prompts: Vec<String>,
+
+                all_seeds: Vec<i64>,
+                seed_resize_from_h: i32,
+                seed_resize_from_w: i32,
+
+                all_subseeds: Vec<i64>,
+                subseed_strength: f32,
+
+                cfg_scale: f32,
+                clip_skip: usize,
+                denoising_strength: f32,
+                face_restoration_model: Option<String>,
+                is_using_inpainting_conditioning: bool,
+                job_timestamp: String,
+                restore_faces: bool,
+                sd_model_hash: String,
+                styles: Vec<String>,
+
+                width: u32,
+                height: u32,
+                sampler_name: String,
+                steps: u32,
+            }
+
+            if let Some(options_request) = options_request {
+                // Used to set the model if requested
+                client.post("sdapi/v1/options", &options_request).await?;
+            }
+
+            let response: Response = client.post(&url, &request).await?;
+            let images = response
+                .images
+                .iter()
+                .map(|b64| decode_image_from_base64(b64.as_str()))
+                .collect::<Result<Vec<_>>>()?;
+            let info = {
+                let raw: InfoResponse = serde_json::from_str(&response.info)?;
+                GenerationInfo {
+                    prompts: raw.all_prompts,
+                    negative_prompts: raw.all_negative_prompts,
+                    seeds: raw.all_seeds,
+                    subseeds: raw.all_subseeds,
+                    subseed_strength: raw.subseed_strength,
+                    width: raw.width,
+                    height: raw.height,
+                    sampler: Sampler::try_from(raw.sampler_name.as_str()).unwrap(),
+                    steps: raw.steps,
+
+                    cfg_scale: raw.cfg_scale,
+                    denoising_strength: raw.denoising_strength,
+                    restore_faces: raw.restore_faces,
+                    seed_resize_from_w: Some(raw.seed_resize_from_w)
+                        .filter(|v| *v > 0)
+                        .map(|v| v as u32),
+                    seed_resize_from_h: Some(raw.seed_resize_from_h)
+                        .filter(|v| *v > 0)
+                        .map(|v| v as u32),
+                    styles: raw.styles,
+
+                    clip_skip: raw.clip_skip,
+                    face_restoration_model: raw.face_restoration_model,
+                    is_using_inpainting_conditioning: raw.is_using_inpainting_conditioning,
+                    job_timestamp: chrono::NaiveDateTime::parse_from_str(
+                        &raw.job_timestamp,
+                        "%Y%m%d%H%M%S",
+                    )?
+                    .and_local_timezone(chrono::Local)
+                    .unwrap(),
+                    model_hash: raw.sd_model_hash,
+                }
+            };
+
+            Ok(GenerationResult { images, info })
+        });
+
+        Ok(GenerationTask {
+            handle,
+            client: self.client.clone(),
+        })
+    }
+}
 
 fn decode_image_from_base64(b64: &str) -> Result<DynamicImage> {
     Ok(image::load_from_memory(&base64::decode(b64)?)?)
@@ -753,6 +910,67 @@ pub struct TextToImageGenerationRequest<'a> {
     pub enable_hr: Option<bool>,
 }
 
+/// Parameters for an image-to-image generation.
+///
+/// Consider using the [Default] trait to fill in the
+/// parameters that you don't need to fill in.
+#[derive(Default)]
+pub struct ImageToImageGenerationRequest<'a> {
+    /// The base parameters for this generation request.
+    pub base: BaseGenerationRequest<'a>,
+
+    /// The images to alter.
+    pub images: &'a [DynamicImage],
+
+    /// How the image will be resized to match the generation resolution
+    pub resize_mode: ResizeMode,
+
+    /// The mask to apply
+    pub mask: Option<DynamicImage>,
+
+    /// The amount to blur the mask
+    pub mask_blur: Option<u32>,
+
+    /// How the area to be inpainted will be initialized
+    pub inpainting_fill_mode: InpaintingFillMode,
+
+    /// Whether or not to inpaint at full resolution
+    pub inpaint_full_resolution: bool,
+
+    /// The amount of padding to apply to the full-resolution padding
+    pub inpaint_full_resolution_padding: Option<u32>,
+
+    /// By default, the masked area is inpainted. If this is turned on, the unmasked area
+    /// will be inpainted.
+    pub inpainting_mask_invert: bool,
+}
+
+/// How to resize the image for image-to-image generation
+#[derive(Default)]
+pub enum ResizeMode {
+    /// Just resize
+    #[default]
+    Resize,
+    /// Crop and resize
+    CropAndResize,
+    /// Resize and fill
+    ResizeAndFill,
+}
+
+/// How the area to be inpainted will be initialized
+#[derive(Default)]
+pub enum InpaintingFillMode {
+    /// Fill
+    Fill,
+    /// Original
+    #[default]
+    Original,
+    /// Latent noise
+    LatentNoise,
+    /// Latent nothing
+    LatentNothing,
+}
+
 /// The result of the generation.
 pub struct GenerationResult {
     /// The images produced by the generator.
@@ -783,34 +1001,14 @@ pub struct GenerationInfo {
     /// The number of steps that were used for each generation.
     pub steps: u32,
 
-    /// The width of the first phase of the generated image
-    pub firstphase_width: u32,
-    /// The height of the first phase of the generated image
-    pub firstphase_height: u32,
-
     /// The Classifier-Free Guidance scale; how strongly the prompt was
     /// applied to the generation
     pub cfg_scale: f32,
     /// The denoising strength
     pub denoising_strength: f32,
-    /// The η parameter
-    pub eta: f32,
 
-    /// Whether or not the image was tiled at the edges
-    pub tiling: bool,
-    /// Unknown
-    pub enable_hr: bool,
     /// Whether or not the face restoration was applied
     pub restore_faces: bool,
-
-    /// s_churn
-    pub s_churn: f32,
-    /// s_noise
-    pub s_noise: f32,
-    /// s_tmax
-    pub s_tmax: f32,
-    /// s_tmin
-    pub s_tmin: f32,
 
     /// The width to resize the image from if reusing a seed with a different size
     pub seed_resize_from_w: Option<u32>,

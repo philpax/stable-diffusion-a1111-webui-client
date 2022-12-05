@@ -108,6 +108,44 @@ async fn main() -> anyhow::Result<()> {
             #[arg(long)]
             model: Option<usize>,
         },
+        /// Generates an image from image and text
+        GenerateFromImageAndText {
+            /// The prompt to generate
+            #[arg()]
+            prompt: String,
+
+            /// The image to use
+            #[arg()]
+            image: PathBuf,
+
+            /// The denoising strength to apply (between 0 and 1)
+            #[arg()]
+            denoising_strength: f32,
+
+            /// The number of images to produce
+            #[arg(short, long)]
+            count: Option<u32>,
+
+            /// The number of denoising steps
+            #[arg(long)]
+            steps: Option<u32>,
+
+            /// The width of the image
+            #[arg(long)]
+            width: Option<u32>,
+
+            /// The height of the image
+            #[arg(long)]
+            height: Option<u32>,
+
+            /// The sampler to use
+            #[arg(long)]
+            sampler: Option<Sampler>,
+
+            /// Index of the model to use (from `models`) if desired
+            #[arg(long)]
+            model: Option<usize>,
+        },
         /// Interrogates the given image with the specified model
         Interrogate {
             /// The image to interrogate
@@ -175,17 +213,38 @@ async fn main() -> anyhow::Result<()> {
                 sampler,
                 model,
             } => {
-                let model = if let Some(index) = model {
-                    let model = models.get(index);
-                    if model.is_none() {
-                        println!("warn: specified model is invalid, using set model");
-                    }
-                    model
-                } else {
-                    None
-                };
-                let task =
-                    client.generate_image_from_text(&client::TextToImageGenerationRequest {
+                let model = get_model_by_index(&models, model);
+                let task = client.generate_from_text(&client::TextToImageGenerationRequest {
+                    base: client::BaseGenerationRequest {
+                        prompt: &prompt,
+                        batch_count: count,
+                        steps,
+                        width,
+                        height,
+                        sampler: sampler.map(|s| s.into()),
+                        model,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })?;
+
+                save_generation_result(task).await?;
+            }
+            Command::GenerateFromImageAndText {
+                prompt,
+                image,
+                denoising_strength,
+                count,
+                steps,
+                width,
+                height,
+                sampler,
+                model,
+            } => {
+                let model = get_model_by_index(&models, model);
+                let image = image::open(image)?;
+                let task = client.generate_from_image_and_text(
+                    &client::ImageToImageGenerationRequest {
                         base: client::BaseGenerationRequest {
                             prompt: &prompt,
                             batch_count: count,
@@ -194,28 +253,15 @@ async fn main() -> anyhow::Result<()> {
                             height,
                             sampler: sampler.map(|s| s.into()),
                             model,
+                            denoising_strength: Some(denoising_strength),
                             ..Default::default()
                         },
+                        images: &[image],
                         ..Default::default()
-                    })?;
-                loop {
-                    let progress = task.progress().await?;
-                    println!(
-                        "{:.02}% complete, {} seconds remaining",
-                        progress.progress_factor * 100.0,
-                        progress.eta_seconds
-                    );
-                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    },
+                )?;
 
-                    if progress.is_finished() {
-                        break;
-                    }
-                }
-                let result = task.await?;
-                println!("info: {:?}", result.info);
-                for (i, image) in result.images.into_iter().enumerate() {
-                    image.save(format!("output_{i}.png"))?;
-                }
+                save_generation_result(task).await?;
             }
             Command::Interrogate {
                 image,
@@ -263,6 +309,41 @@ fn prompt_for_input() -> anyhow::Result<String> {
     let mut line = String::new();
     std::io::stdin().lock().read_line(&mut line)?;
     Ok(line.trim().to_owned())
+}
+
+fn get_model_by_index(models: &[client::Model], index: Option<usize>) -> Option<&client::Model> {
+    if let Some(index) = index {
+        let model = models.get(index);
+        if model.is_none() {
+            println!("warn: specified model is invalid, using set model");
+        }
+        model
+    } else {
+        None
+    }
+}
+
+async fn save_generation_result(task: client::GenerationTask) -> anyhow::Result<()> {
+    loop {
+        let progress = task.progress().await?;
+        println!(
+            "{:.02}% complete, {} seconds remaining",
+            progress.progress_factor * 100.0,
+            progress.eta_seconds
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+
+        if progress.is_finished() {
+            break;
+        }
+    }
+    let result = task.await?;
+    println!("info: {:?}", result.info);
+    for (i, image) in result.images.into_iter().enumerate() {
+        image.save(format!("output_{i}.png"))?;
+    }
+
+    Ok(())
 }
 
 fn list_unordered_print<D: Debug>(title: &str, values: impl IntoIterator<Item = D>) {
