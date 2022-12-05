@@ -124,7 +124,10 @@ impl Client {
     ///
     /// The `GenerationTask` can be `await`ed, or its [GenerationTask::progress]
     /// can be retrieved to find out what the status of the generation is.
-    pub fn generate_image_from_text(&self, request: &GenerationRequest) -> Result<GenerationTask> {
+    pub fn generate_image_from_text(
+        &self,
+        request: &TextToImageGenerationRequest,
+    ) -> Result<GenerationTask> {
         #[derive(Serialize)]
         struct OptionsRequest {
             sd_model_checkpoint: String,
@@ -160,7 +163,7 @@ impl Client {
             width: u32,
         }
 
-        let options_request = request.model.map(|s| OptionsRequest {
+        let options_request = request.base.model.map(|s| OptionsRequest {
             sd_model_checkpoint: s.title.clone(),
         });
 
@@ -194,42 +197,43 @@ impl Client {
                 sampler_index: Sampler::EulerA.to_string(),
             };
             let r = request;
+            let b = &request.base;
             Request {
-                batch_size: r.batch_size.map(|i| i as i32).unwrap_or(d.batch_size),
-                cfg_scale: r.cfg_scale.unwrap_or(d.cfg_scale),
-                denoising_strength: r.denoising_strength.unwrap_or(d.denoising_strength),
+                batch_size: b.batch_size.map(|i| i as i32).unwrap_or(d.batch_size),
+                cfg_scale: b.cfg_scale.unwrap_or(d.cfg_scale),
+                denoising_strength: b.denoising_strength.unwrap_or(d.denoising_strength),
                 enable_hr: r.enable_hr.unwrap_or(d.enable_hr),
-                eta: r.eta.unwrap_or(d.eta),
+                eta: b.eta.unwrap_or(d.eta),
                 firstphase_height: r.firstphase_height.unwrap_or(d.firstphase_height),
                 firstphase_width: r.firstphase_width.unwrap_or(d.firstphase_width),
-                height: r.height.unwrap_or(d.height),
-                n_iter: r.batch_count.unwrap_or(d.n_iter),
-                negative_prompt: r
+                height: b.height.unwrap_or(d.height),
+                n_iter: b.batch_count.unwrap_or(d.n_iter),
+                negative_prompt: b
                     .negative_prompt
                     .map(|s| s.to_owned())
                     .unwrap_or(d.negative_prompt),
-                prompt: r.prompt.to_owned(),
-                restore_faces: r.restore_faces.unwrap_or(d.restore_faces),
-                s_churn: r.s_churn.unwrap_or(d.s_churn),
-                s_noise: r.s_noise.unwrap_or(d.s_noise),
-                s_tmax: r.s_tmax.unwrap_or(d.s_tmax),
-                s_tmin: r.s_tmin.unwrap_or(d.s_tmin),
-                sampler_index: r.sampler.map(|s| s.to_string()).unwrap_or(d.sampler_index),
-                seed: r.seed.unwrap_or(d.seed),
-                seed_resize_from_h: r
+                prompt: b.prompt.to_owned(),
+                restore_faces: b.restore_faces.unwrap_or(d.restore_faces),
+                s_churn: b.s_churn.unwrap_or(d.s_churn),
+                s_noise: b.s_noise.unwrap_or(d.s_noise),
+                s_tmax: b.s_tmax.unwrap_or(d.s_tmax),
+                s_tmin: b.s_tmin.unwrap_or(d.s_tmin),
+                sampler_index: b.sampler.map(|s| s.to_string()).unwrap_or(d.sampler_index),
+                seed: b.seed.unwrap_or(d.seed),
+                seed_resize_from_h: b
                     .seed_resize_from_h
                     .map(|i| i as i32)
                     .unwrap_or(d.seed_resize_from_h),
-                seed_resize_from_w: r
+                seed_resize_from_w: b
                     .seed_resize_from_w
                     .map(|i| i as i32)
                     .unwrap_or(d.seed_resize_from_w),
-                steps: r.steps.unwrap_or(d.steps),
-                styles: r.styles.clone().unwrap_or(d.styles),
-                subseed: r.subseed.unwrap_or(d.subseed),
-                subseed_strength: r.subseed_strength.unwrap_or(d.subseed_strength),
-                tiling: r.tiling.unwrap_or(d.tiling),
-                width: r.width.unwrap_or(d.width),
+                steps: b.steps.unwrap_or(d.steps),
+                styles: b.styles.clone().unwrap_or(d.styles),
+                subseed: b.subseed.unwrap_or(d.subseed),
+                subseed_strength: b.subseed_strength.unwrap_or(d.subseed_strength),
+                tiling: b.tiling.unwrap_or(d.tiling),
+                width: b.width.unwrap_or(d.width),
             }
         };
 
@@ -665,12 +669,13 @@ impl GenerationProgress {
     }
 }
 
-/// The parameters to the generation.
+/// The parameters to the generation that are shared between text-to-image synthesis
+/// and image-to-image synthesis.
 ///
 /// Consider using the [Default] trait to fill in the
 /// parameters that you don't need to fill in.
 #[derive(Default)]
-pub struct GenerationRequest<'a> {
+pub struct BaseGenerationRequest<'a> {
     /// The prompt
     pub prompt: &'a str,
     /// The negative prompt (elements to avoid from the generation)
@@ -685,10 +690,6 @@ pub struct GenerationRequest<'a> {
     pub width: Option<u32>,
     /// The height of the generated image
     pub height: Option<u32>,
-    /// The width of the first phase of the generated image
-    pub firstphase_width: Option<u32>,
-    /// The height of the first phase of the generated image
-    pub firstphase_height: Option<u32>,
 
     /// The Classifier-Free Guidance scale; how strongly the prompt is
     /// applied to the generation
@@ -706,8 +707,6 @@ pub struct GenerationRequest<'a> {
 
     /// Whether or not the image should be tiled at the edges
     pub tiling: Option<bool>,
-    /// Unknown
-    pub enable_hr: Option<bool>,
     /// Whether or not to apply the face restoration
     pub restore_faces: Option<bool>,
 
@@ -734,6 +733,24 @@ pub struct GenerationRequest<'a> {
 
     /// Any styles to apply to the generation
     pub styles: Option<Vec<String>>,
+}
+
+/// Parameters for a text-to-image generation.
+///
+/// Consider using the [Default] trait to fill in the
+/// parameters that you don't need to fill in.
+#[derive(Default)]
+pub struct TextToImageGenerationRequest<'a> {
+    /// The base parameters for this generation request.
+    pub base: BaseGenerationRequest<'a>,
+
+    /// The width of the first phase of the generated image
+    pub firstphase_width: Option<u32>,
+    /// The height of the first phase of the generated image
+    pub firstphase_height: Option<u32>,
+
+    /// Unknown
+    pub enable_hr: Option<bool>,
 }
 
 /// The result of the generation.

@@ -184,16 +184,20 @@ async fn main() -> anyhow::Result<()> {
                 } else {
                     None
                 };
-                let task = client.generate_image_from_text(&client::GenerationRequest {
-                    prompt: &prompt,
-                    batch_count: count,
-                    steps,
-                    width,
-                    height,
-                    sampler: sampler.map(|s| s.into()),
-                    model,
-                    ..Default::default()
-                })?;
+                let task =
+                    client.generate_image_from_text(&client::TextToImageGenerationRequest {
+                        base: client::BaseGenerationRequest {
+                            prompt: &prompt,
+                            batch_count: count,
+                            steps,
+                            width,
+                            height,
+                            sampler: sampler.map(|s| s.into()),
+                            model,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    })?;
                 loop {
                     let progress = task.progress().await?;
                     println!(
