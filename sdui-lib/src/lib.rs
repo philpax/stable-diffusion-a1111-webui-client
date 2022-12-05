@@ -945,32 +945,6 @@ pub struct ImageToImageGenerationRequest<'a> {
     pub inpainting_mask_invert: bool,
 }
 
-/// How to resize the image for image-to-image generation
-#[derive(Default)]
-pub enum ResizeMode {
-    /// Just resize
-    #[default]
-    Resize,
-    /// Crop and resize
-    CropAndResize,
-    /// Resize and fill
-    ResizeAndFill,
-}
-
-/// How the area to be inpainted will be initialized
-#[derive(Default)]
-pub enum InpaintingFillMode {
-    /// Fill
-    Fill,
-    /// Original
-    #[default]
-    Original,
-    /// Latent noise
-    LatentNoise,
-    /// Latent nothing
-    LatentNothing,
-}
-
 /// The result of the generation.
 pub struct GenerationResult {
     /// The images produced by the generator.
@@ -1109,6 +1083,37 @@ define_user_friendly_enum!(
         (DeepDanbooru, "DeepDanbooru")
     }
 );
+
+define_user_friendly_enum!(
+    ResizeMode,
+    "How to resize the image for image-to-image generation",
+    {
+        (Resize, "Just resize"),
+        (CropAndResize, "Crop and resize"),
+        (ResizeAndFill, "Resize and fill")
+    }
+);
+impl Default for ResizeMode {
+    fn default() -> Self {
+        Self::Resize
+    }
+}
+
+define_user_friendly_enum!(
+    InpaintingFillMode,
+    "How the area to be inpainted will be initialized",
+    {
+        (Fill, "Fill"),
+        (Original, "Original"),
+        (LatentNoise, "Latent noise"),
+        (LatentNothing, "Latent nothing")
+    }
+);
+impl Default for InpaintingFillMode {
+    fn default() -> Self {
+        Self::Original
+    }
+}
 
 /// The currently set options for the UI
 #[derive(Debug)]
