@@ -229,10 +229,12 @@ impl Client {
             }
         };
 
+        let tiling = json_request.tiling;
         self.issue_generation_task(
             request.base.model,
             "sdapi/v1/txt2img".to_string(),
             json_request,
+            tiling,
         )
     }
 
@@ -380,10 +382,12 @@ impl Client {
             }
         };
 
+        let tiling = json_request.tiling;
         self.issue_generation_task(
             request.base.model,
             "sdapi/v1/img2img".to_string(),
             json_request,
+            tiling,
         )
     }
 
@@ -644,6 +648,7 @@ impl Client {
         model: Option<&Model>,
         url: String,
         request: R,
+        tiling: bool,
     ) -> Result<GenerationTask> {
         #[derive(Serialize)]
         struct OptionsRequest {
@@ -713,6 +718,7 @@ impl Client {
                     height: raw.height,
                     sampler: Sampler::try_from(raw.sampler_name.as_str()).unwrap(),
                     steps: raw.steps,
+                    tiling,
 
                     cfg_scale: raw.cfg_scale,
                     denoising_strength: raw.denoising_strength,
@@ -974,6 +980,8 @@ pub struct GenerationInfo {
     pub sampler: Sampler,
     /// The number of steps that were used for each generation.
     pub steps: u32,
+    /// Whether or not the image should be tiled at the edges
+    pub tiling: bool,
 
     /// The Classifier-Free Guidance scale; how strongly the prompt was
     /// applied to the generation
