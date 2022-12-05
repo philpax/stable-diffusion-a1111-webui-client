@@ -256,7 +256,7 @@ async fn main() -> anyhow::Result<()> {
                             denoising_strength: Some(denoising_strength),
                             ..Default::default()
                         },
-                        images: &[image],
+                        images: &[&image],
                         ..Default::default()
                     },
                 )?;
