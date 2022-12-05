@@ -926,7 +926,7 @@ pub struct ImageToImageGenerationRequest<'a> {
     pub base: BaseGenerationRequest<'a>,
 
     /// The images to alter.
-    pub images: &'a [&'a DynamicImage],
+    pub images: Vec<&'a DynamicImage>,
 
     /// How the image will be resized to match the generation resolution
     pub resize_mode: ResizeMode,
