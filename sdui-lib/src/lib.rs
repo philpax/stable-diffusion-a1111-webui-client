@@ -360,14 +360,14 @@ impl Client {
                     .iter()
                     .map(|i| encode_image_to_base64(i))
                     .collect::<core::result::Result<Vec<_>, _>>()?,
-                resize_mode: match r.resize_mode {
+                resize_mode: match r.resize_mode.unwrap_or_default() {
                     ResizeMode::Resize => 0,
                     ResizeMode::CropAndResize => 1,
                     ResizeMode::ResizeAndFill => 2,
                 },
                 mask: r.mask.as_ref().map(encode_image_to_base64).transpose()?,
                 mask_blur: r.mask_blur.unwrap_or(d.mask_blur),
-                inpainting_fill: match r.inpainting_fill_mode {
+                inpainting_fill: match r.inpainting_fill_mode.unwrap_or_default() {
                     InpaintingFillMode::Fill => 0,
                     InpaintingFillMode::Original => 1,
                     InpaintingFillMode::LatentNoise => 2,
@@ -929,7 +929,7 @@ pub struct ImageToImageGenerationRequest<'a> {
     pub images: Vec<&'a DynamicImage>,
 
     /// How the image will be resized to match the generation resolution
-    pub resize_mode: ResizeMode,
+    pub resize_mode: Option<ResizeMode>,
 
     /// The mask to apply
     pub mask: Option<DynamicImage>,
@@ -938,7 +938,7 @@ pub struct ImageToImageGenerationRequest<'a> {
     pub mask_blur: Option<u32>,
 
     /// How the area to be inpainted will be initialized
-    pub inpainting_fill_mode: InpaintingFillMode,
+    pub inpainting_fill_mode: Option<InpaintingFillMode>,
 
     /// Whether or not to inpaint at full resolution
     pub inpaint_full_resolution: bool,
