@@ -360,11 +360,7 @@ impl Client {
                     .iter()
                     .map(|i| encode_image_to_base64(i))
                     .collect::<core::result::Result<Vec<_>, _>>()?,
-                resize_mode: match r.resize_mode.unwrap_or_default() {
-                    ResizeMode::Resize => 0,
-                    ResizeMode::CropAndResize => 1,
-                    ResizeMode::ResizeAndFill => 2,
-                },
+                resize_mode: r.resize_mode.unwrap_or_default().into(),
                 mask: r.mask.as_ref().map(encode_image_to_base64).transpose()?,
                 mask_blur: r.mask_blur.unwrap_or(d.mask_blur),
                 inpainting_fill: match r.inpainting_fill_mode.unwrap_or_default() {
@@ -389,6 +385,60 @@ impl Client {
             json_request,
             tiling,
         )
+    }
+
+    /// Upscales the given `image` and applies additional (optional) post-processing.
+    pub async fn postprocess(
+        &self,
+        image: &DynamicImage,
+        request: &PostprocessRequest,
+    ) -> Result<DynamicImage> {
+        #[derive(Serialize)]
+        struct RequestRaw<'a> {
+            image: &'a str,
+            resize_mode: u32,
+            upscaler_1: &'a str,
+            upscaler_2: &'a str,
+            upscaling_resize: f32,
+
+            #[serde(skip_serializing_if = "Option::is_none")]
+            codeformer_visibility: Option<f32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            codeformer_weight: Option<f32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            extras_upscaler_2_visibility: Option<f32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            gfpgan_visibility: Option<f32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            upscale_first: Option<bool>,
+        }
+
+        #[derive(Deserialize)]
+        struct ResponseRaw {
+            image: String,
+        }
+
+        let response: ResponseRaw = self
+            .client
+            .post(
+                "sdapi/v1/extra-single-image",
+                &RequestRaw {
+                    image: &encode_image_to_base64(image)?,
+                    resize_mode: request.resize_mode.into(),
+                    upscaler_1: &request.upscaler_1.to_string(),
+                    upscaler_2: &request.upscaler_2.to_string(),
+                    upscaling_resize: request.scale_factor,
+
+                    codeformer_visibility: request.codeformer_visibility,
+                    codeformer_weight: request.codeformer_weight,
+                    extras_upscaler_2_visibility: request.upscaler_2_visibility,
+                    gfpgan_visibility: request.gfpgan_visibility,
+                    upscale_first: request.upscale_first,
+                },
+            )
+            .await?;
+
+        decode_image_from_base64(&response.image)
     }
 
     /// Interrogates the given `image` with the `interrogator` to generate a caption.
@@ -515,9 +565,8 @@ impl Client {
             .await
             .map(|r| {
                 r.into_iter()
-                    .map(|r| Upscaler {
-                        name: r.name,
-                        model_name: r.model_name,
+                    .flat_map(|r| {
+                        Upscaler::try_from(r.model_name.as_deref().unwrap_or(r.name.as_str())).ok()
                     })
                     .collect()
             })
@@ -1012,6 +1061,31 @@ pub struct GenerationInfo {
     pub model_hash: String,
 }
 
+/// A request to post-process an image. See [Client::postprocess].
+#[derive(Default)]
+pub struct PostprocessRequest {
+    /// How the image should be resized to fit the target resolution if the
+    /// resolution doesn't fit within the frame
+    pub resize_mode: ResizeMode,
+    /// The first upscaler to use
+    pub upscaler_1: Upscaler,
+    /// The second upscaler to use
+    pub upscaler_2: Upscaler,
+    /// The scale factor to use
+    pub scale_factor: f32,
+
+    /// How much of CodeFormer's result is blended into the result? [0-1]
+    pub codeformer_visibility: Option<f32>,
+    /// How strong is CodeFormer's effect? [0-1]
+    pub codeformer_weight: Option<f32>,
+    /// How much of the second upscaler's result is blended into the result? [0-1]
+    pub upscaler_2_visibility: Option<f32>,
+    /// How much of GFPGAN's result is blended into the result? [0-1]
+    pub gfpgan_visibility: Option<f32>,
+    /// Should upscaling occur before face restoration?
+    pub upscale_first: Option<bool>,
+}
+
 macro_rules! define_user_friendly_enum {
     ($enum_name:ident, $doc:literal, {$(($name:ident, $friendly_name:literal)),*}) => {
         #[doc = $doc]
@@ -1106,6 +1180,15 @@ impl Default for ResizeMode {
         Self::Resize
     }
 }
+impl From<ResizeMode> for u32 {
+    fn from(mode: ResizeMode) -> Self {
+        match mode {
+            ResizeMode::Resize => 0,
+            ResizeMode::CropAndResize => 1,
+            ResizeMode::ResizeAndFill => 2,
+        }
+    }
+}
 
 define_user_friendly_enum!(
     InpaintingFillMode,
@@ -1123,6 +1206,26 @@ impl Default for InpaintingFillMode {
     }
 }
 
+define_user_friendly_enum!(
+    Upscaler,
+    "Upscaler",
+    {
+        (None, "None"),
+        (Lanczos, "Lanczos"),
+        (Nearest, "Nearest"),
+        (LDSR, "LDSR"),
+        (ScuNetGan, "ScuNET GAN"),
+        (ScuNetPSNR, "ScuNET PSNR"),
+        (SwinIR4x, "SwinIR 4x"),
+        (ESRGAN4x, "ESRGAN_4x")
+    }
+);
+impl Default for Upscaler {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 /// The currently set options for the UI
 #[derive(Debug)]
 pub struct Options {
@@ -1137,15 +1240,6 @@ pub struct Options {
     pub s_noise: f32,
     /// s_tmin
     pub s_tmin: f32,
-}
-
-/// Upscaler
-#[derive(Debug)]
-pub struct Upscaler {
-    /// Name of the upscaler
-    pub name: String,
-    /// Name of the model used for this upscaler
-    pub model_name: Option<String>,
 }
 
 /// Model

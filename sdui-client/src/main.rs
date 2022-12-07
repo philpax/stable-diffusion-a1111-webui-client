@@ -56,6 +56,17 @@ async fn main() -> anyhow::Result<()> {
         DeepDanbooru,
     });
 
+    remap_enum!(Upscaler, {
+        None,
+        Lanczos,
+        Nearest,
+        LDSR,
+        ScuNetGan,
+        ScuNetPSNR,
+        SwinIR4x,
+        ESRGAN4x,
+    });
+
     /// Client for Automatic1111's Stable Diffusion web UI
     #[derive(Parser)]
     #[command(author, version, about, long_about = None)]
@@ -145,6 +156,43 @@ async fn main() -> anyhow::Result<()> {
             /// Index of the model to use (from `models`) if desired
             #[arg(long)]
             model: Option<usize>,
+        },
+        /// Postprocesses the given image
+        Postprocess {
+            /// The image to use
+            #[arg()]
+            image: PathBuf,
+
+            /// The first upscaler to use
+            #[arg(long)]
+            upscaler_1: Upscaler,
+
+            /// The second upscaler to use
+            #[arg(long)]
+            upscaler_2: Upscaler,
+
+            /// The scale factor to use
+            #[arg(long)]
+            scale_factor: f32,
+
+            /// How much of CodeFormer's result is blended into the result? [0-1]
+            #[arg(long)]
+            codeformer_visibility: Option<f32>,
+
+            /// How strong is CodeFormer's effect? [0-1]
+            #[arg(long)]
+            codeformer_weight: Option<f32>,
+            /// How much of the second upscaler's result is blended into the result? [0-1]
+            #[arg(long)]
+            upscaler_2_visibility: Option<f32>,
+
+            /// How much of GFPGAN's result is blended into the result? [0-1]
+            #[arg(long)]
+            gfpgan_visibility: Option<f32>,
+
+            /// Should upscaling occur before face restoration?
+            #[arg(long)]
+            upscale_first: Option<bool>,
         },
         /// Interrogates the given image with the specified model
         Interrogate {
@@ -262,6 +310,38 @@ async fn main() -> anyhow::Result<()> {
                 )?;
 
                 save_generation_result(task).await?;
+            }
+            Command::Postprocess {
+                image,
+                upscaler_1,
+                upscaler_2,
+                scale_factor,
+                codeformer_visibility,
+                codeformer_weight,
+                upscaler_2_visibility,
+                gfpgan_visibility,
+                upscale_first,
+            } => {
+                let image = image::open(image)?;
+
+                let result = client
+                    .postprocess(
+                        &image,
+                        &client::PostprocessRequest {
+                            resize_mode: client::ResizeMode::Resize,
+                            upscaler_1: upscaler_1.into(),
+                            upscaler_2: upscaler_2.into(),
+                            scale_factor,
+                            codeformer_visibility,
+                            codeformer_weight,
+                            upscaler_2_visibility,
+                            gfpgan_visibility,
+                            upscale_first,
+                        },
+                    )
+                    .await?;
+
+                result.save("output_postprocess.png")?;
             }
             Command::Interrogate {
                 image,
