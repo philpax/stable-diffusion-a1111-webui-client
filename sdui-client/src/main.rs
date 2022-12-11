@@ -261,10 +261,10 @@ async fn main() -> anyhow::Result<()> {
                 sampler,
                 model,
             } => {
-                let model = get_model_by_index(&models, model);
+                let model = get_model_by_index(&models, model).cloned();
                 let task = client.generate_from_text(&client::TextToImageGenerationRequest {
                     base: client::BaseGenerationRequest {
-                        prompt: &prompt,
+                        prompt,
                         batch_count: count,
                         steps,
                         width,
@@ -289,12 +289,12 @@ async fn main() -> anyhow::Result<()> {
                 sampler,
                 model,
             } => {
-                let model = get_model_by_index(&models, model);
+                let model = get_model_by_index(&models, model).cloned();
                 let image = image::open(image)?;
                 let task = client.generate_from_image_and_text(
                     &client::ImageToImageGenerationRequest {
                         base: client::BaseGenerationRequest {
-                            prompt: &prompt,
+                            prompt,
                             batch_count: count,
                             steps,
                             width,
@@ -304,7 +304,7 @@ async fn main() -> anyhow::Result<()> {
                             denoising_strength: Some(denoising_strength),
                             ..Default::default()
                         },
-                        images: vec![&image],
+                        images: vec![image],
                         ..Default::default()
                     },
                 )?;

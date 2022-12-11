@@ -200,10 +200,7 @@ impl Client {
                 firstphase_width: r.firstphase_width.unwrap_or(d.firstphase_width),
                 height: b.height.unwrap_or(d.height),
                 n_iter: b.batch_count.unwrap_or(d.n_iter),
-                negative_prompt: b
-                    .negative_prompt
-                    .map(|s| s.to_owned())
-                    .unwrap_or(d.negative_prompt),
+                negative_prompt: b.negative_prompt.clone().unwrap_or(d.negative_prompt),
                 prompt: b.prompt.to_owned(),
                 restore_faces: b.restore_faces.unwrap_or(d.restore_faces),
                 s_churn: b.s_churn.unwrap_or(d.s_churn),
@@ -231,7 +228,7 @@ impl Client {
 
         let tiling = json_request.tiling;
         self.issue_generation_task(
-            request.base.model,
+            request.base.model.as_ref(),
             "sdapi/v1/txt2img".to_string(),
             json_request,
             tiling,
@@ -328,10 +325,7 @@ impl Client {
                 eta: b.eta.unwrap_or(d.eta),
                 height: b.height.unwrap_or(d.height),
                 n_iter: b.batch_count.unwrap_or(d.n_iter),
-                negative_prompt: b
-                    .negative_prompt
-                    .map(|s| s.to_owned())
-                    .unwrap_or(d.negative_prompt),
+                negative_prompt: b.negative_prompt.clone().unwrap_or(d.negative_prompt),
                 prompt: b.prompt.to_owned(),
                 restore_faces: b.restore_faces.unwrap_or(d.restore_faces),
                 s_churn: b.s_churn.unwrap_or(d.s_churn),
@@ -380,7 +374,7 @@ impl Client {
 
         let tiling = json_request.tiling;
         self.issue_generation_task(
-            request.base.model,
+            request.base.model.as_ref(),
             "sdapi/v1/img2img".to_string(),
             json_request,
             tiling,
@@ -887,11 +881,11 @@ impl GenerationProgress {
 /// Consider using the [Default] trait to fill in the
 /// parameters that you don't need to fill in.
 #[derive(Default)]
-pub struct BaseGenerationRequest<'a> {
+pub struct BaseGenerationRequest {
     /// The prompt
-    pub prompt: &'a str,
+    pub prompt: String,
     /// The negative prompt (elements to avoid from the generation)
-    pub negative_prompt: Option<&'a str>,
+    pub negative_prompt: Option<String>,
 
     /// The number of images in each batch
     pub batch_size: Option<u32>,
@@ -915,7 +909,7 @@ pub struct BaseGenerationRequest<'a> {
     /// The number of steps
     pub steps: Option<u32>,
     /// The model override to use. If not supplied, the currently-set model will be used.
-    pub model: Option<&'a Model>,
+    pub model: Option<Model>,
 
     /// Whether or not the image should be tiled at the edges
     pub tiling: Option<bool>,
@@ -952,9 +946,9 @@ pub struct BaseGenerationRequest<'a> {
 /// Consider using the [Default] trait to fill in the
 /// parameters that you don't need to fill in.
 #[derive(Default)]
-pub struct TextToImageGenerationRequest<'a> {
+pub struct TextToImageGenerationRequest {
     /// The base parameters for this generation request.
-    pub base: BaseGenerationRequest<'a>,
+    pub base: BaseGenerationRequest,
 
     /// The width of the first phase of the generated image
     pub firstphase_width: Option<u32>,
@@ -970,12 +964,12 @@ pub struct TextToImageGenerationRequest<'a> {
 /// Consider using the [Default] trait to fill in the
 /// parameters that you don't need to fill in.
 #[derive(Default)]
-pub struct ImageToImageGenerationRequest<'a> {
+pub struct ImageToImageGenerationRequest {
     /// The base parameters for this generation request.
-    pub base: BaseGenerationRequest<'a>,
+    pub base: BaseGenerationRequest,
 
     /// The images to alter.
-    pub images: Vec<&'a DynamicImage>,
+    pub images: Vec<DynamicImage>,
 
     /// How the image will be resized to match the generation resolution
     pub resize_mode: Option<ResizeMode>,
@@ -1009,7 +1003,7 @@ pub struct GenerationResult {
 }
 
 /// The information associated with a generation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GenerationInfo {
     /// The prompts used for each image in the generation.
     pub prompts: Vec<String>,
@@ -1227,7 +1221,7 @@ impl Default for Upscaler {
 }
 
 /// The currently set options for the UI
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Options {
     /// Current hypernetwork
     pub hypernetwork: String,
@@ -1243,7 +1237,7 @@ pub struct Options {
 }
 
 /// Model
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Model {
     /// Title of the model
     pub title: String,
@@ -1252,7 +1246,7 @@ pub struct Model {
 }
 
 /// Prompt style
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PromptStyle {
     /// Name of the style
     pub name: String,
@@ -1263,7 +1257,7 @@ pub struct PromptStyle {
 }
 
 /// Artist
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Artist {
     /// Name of the artist
     pub name: String,
