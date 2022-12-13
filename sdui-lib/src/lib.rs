@@ -880,7 +880,7 @@ impl GenerationProgress {
 ///
 /// Consider using the [Default] trait to fill in the
 /// parameters that you don't need to fill in.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct BaseGenerationRequest {
     /// The prompt
     pub prompt: String,
@@ -945,7 +945,7 @@ pub struct BaseGenerationRequest {
 ///
 /// Consider using the [Default] trait to fill in the
 /// parameters that you don't need to fill in.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TextToImageGenerationRequest {
     /// The base parameters for this generation request.
     pub base: BaseGenerationRequest,
@@ -963,7 +963,7 @@ pub struct TextToImageGenerationRequest {
 ///
 /// Consider using the [Default] trait to fill in the
 /// parameters that you don't need to fill in.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ImageToImageGenerationRequest {
     /// The base parameters for this generation request.
     pub base: BaseGenerationRequest,
