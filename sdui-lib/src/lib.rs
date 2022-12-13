@@ -352,7 +352,7 @@ impl Client {
                 init_images: r
                     .images
                     .iter()
-                    .map(|i| encode_image_to_base64(i))
+                    .map(encode_image_to_base64)
                     .collect::<core::result::Result<Vec<_>, _>>()?,
                 resize_mode: r.resize_mode.unwrap_or_default().into(),
                 mask: r.mask.as_ref().map(encode_image_to_base64).transpose()?,
