@@ -1207,7 +1207,7 @@ define_user_friendly_enum!(
         (None, "None"),
         (Lanczos, "Lanczos"),
         (Nearest, "Nearest"),
-        (LDSR, "LDSR"),
+        (Ldsr, "LDSR"),
         (ScuNetGan, "ScuNET GAN"),
         (ScuNetPSNR, "ScuNET PSNR"),
         (SwinIR4x, "SwinIR 4x"),

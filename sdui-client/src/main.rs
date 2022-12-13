@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
         None,
         Lanczos,
         Nearest,
-        LDSR,
+        Ldsr,
         ScuNetGan,
         ScuNetPSNR,
         SwinIR4x,
