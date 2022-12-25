@@ -262,21 +262,22 @@ async fn main() -> anyhow::Result<()> {
                 model,
             } => {
                 let model = get_model_by_index(&models, model).cloned();
-                let task = client.generate_from_text(&client::TextToImageGenerationRequest {
-                    base: client::BaseGenerationRequest {
-                        prompt,
-                        batch_count: count,
-                        steps,
-                        width,
-                        height,
-                        sampler: sampler.map(|s| s.into()),
-                        model,
+                let task = tokio::task::spawn(client.generate_from_text(
+                    client::TextToImageGenerationRequest {
+                        base: client::BaseGenerationRequest {
+                            prompt,
+                            batch_count: count,
+                            steps,
+                            width,
+                            height,
+                            sampler: sampler.map(|s| s.into()),
+                            model,
+                            ..Default::default()
+                        },
                         ..Default::default()
                     },
-                    ..Default::default()
-                })?;
-
-                save_generation_result(task).await?;
+                ));
+                save_generation_result(&client, task).await?;
             }
             Command::GenerateFromImageAndText {
                 prompt,
@@ -291,8 +292,8 @@ async fn main() -> anyhow::Result<()> {
             } => {
                 let model = get_model_by_index(&models, model).cloned();
                 let image = image::open(image)?;
-                let task = client.generate_from_image_and_text(
-                    &client::ImageToImageGenerationRequest {
+                let task = tokio::task::spawn(client.generate_from_image_and_text(
+                    client::ImageToImageGenerationRequest {
                         base: client::BaseGenerationRequest {
                             prompt,
                             batch_count: count,
@@ -307,9 +308,8 @@ async fn main() -> anyhow::Result<()> {
                         images: vec![image],
                         ..Default::default()
                     },
-                )?;
-
-                save_generation_result(task).await?;
+                ));
+                save_generation_result(&client, task).await?;
             }
             Command::Postprocess {
                 image,
@@ -403,9 +403,12 @@ fn get_model_by_index(models: &[client::Model], index: Option<usize>) -> Option<
     }
 }
 
-async fn save_generation_result(task: client::GenerationTask) -> anyhow::Result<()> {
+async fn save_generation_result(
+    client: &client::Client,
+    task: tokio::task::JoinHandle<client::Result<client::GenerationResult>>,
+) -> anyhow::Result<()> {
     loop {
-        let progress = task.progress().await?;
+        let progress = client.progress().await?;
         println!(
             "{:.02}% complete, {} seconds remaining",
             progress.progress_factor * 100.0,
@@ -413,11 +416,11 @@ async fn save_generation_result(task: client::GenerationTask) -> anyhow::Result<
         );
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        if progress.is_finished() {
+        if progress.is_finished() || task.is_finished() {
             break;
         }
     }
-    let result = task.await?;
+    let result = task.await??;
     println!("info: {:?}", result.info);
     for (i, image) in result.images.into_iter().enumerate() {
         image.save(format!("output_{i}.png"))?;
