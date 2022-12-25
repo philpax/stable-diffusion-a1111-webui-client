@@ -402,10 +402,16 @@ impl Client {
     ///       generation finishes
     pub async fn progress(&self) -> Result<GenerationProgress> {
         #[derive(Deserialize)]
+        struct State {
+            job_timestamp: String,
+        }
+
+        #[derive(Deserialize)]
         struct Response {
             eta_relative: f32,
             progress: f32,
             current_image: Option<String>,
+            state: Option<State>,
         }
 
         let response: Response = self.client.get("sdapi/v1/progress").await?;
@@ -416,6 +422,11 @@ impl Client {
                 .current_image
                 .map(|i| decode_image_from_base64(&i))
                 .transpose()?,
+            job_timestamp: response
+                .state
+                .map(|s| chrono::NaiveDateTime::parse_from_str(&s.job_timestamp, "%Y%m%d%H%M%S"))
+                .transpose()?
+                .map(|dt| dt.and_local_timezone(chrono::Local).unwrap()),
         })
     }
 
@@ -834,6 +845,8 @@ pub struct GenerationProgress {
     pub progress_factor: f32,
     /// The current image being generated, if available.
     pub current_image: Option<DynamicImage>,
+    /// The timestamp that the current job was started. Can be used to disambiguate between jobs.
+    pub job_timestamp: Option<chrono::DateTime<chrono::Local>>,
 }
 impl GenerationProgress {
     /// Whether or not the generation has completed.

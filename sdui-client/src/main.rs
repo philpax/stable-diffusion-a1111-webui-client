@@ -410,9 +410,13 @@ async fn save_generation_result(
     loop {
         let progress = client.progress().await?;
         println!(
-            "{:.02}% complete, {} seconds remaining",
+            "{:.02}% complete, {} seconds remaining (job started at {})",
             progress.progress_factor * 100.0,
-            progress.eta_seconds
+            progress.eta_seconds,
+            progress
+                .job_timestamp
+                .map(|t| t.to_rfc3339())
+                .unwrap_or_else(|| "unknown time".to_string())
         );
         tokio::time::sleep(Duration::from_millis(250)).await;
 
