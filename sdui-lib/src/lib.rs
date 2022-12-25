@@ -148,6 +148,8 @@ impl Client {
             subseed_strength: f32,
             tiling: bool,
             width: u32,
+            override_settings: OverrideSettings,
+            override_settings_restore_afterwards: bool,
 
             enable_hr: bool,
             firstphase_height: u32,
@@ -182,6 +184,8 @@ impl Client {
                 s_tmin: 0.0,
                 s_noise: 1.0,
                 sampler_index: Sampler::EulerA.to_string(),
+                override_settings: OverrideSettings::default(),
+                override_settings_restore_afterwards: false,
             };
             let r = &request;
             let b = &request.base;
@@ -218,16 +222,15 @@ impl Client {
                 subseed_strength: b.subseed_strength.unwrap_or(d.subseed_strength),
                 tiling: b.tiling.unwrap_or(d.tiling),
                 width: b.width.unwrap_or(d.width),
+                override_settings: OverrideSettings::from_model(r.base.model.as_ref()),
+                override_settings_restore_afterwards: false,
             }
         };
 
-        let tiling = json_request.tiling;
-        let model = request.base.model.as_ref().map(|m| m.title.clone());
-
         async move {
+            let tiling = json_request.tiling;
             Self::issue_generation_task(
                 client,
-                model,
                 "sdapi/v1/txt2img".to_string(),
                 json_request,
                 tiling,
@@ -268,6 +271,8 @@ impl Client {
             subseed_strength: f32,
             tiling: bool,
             width: u32,
+            override_settings: OverrideSettings,
+            override_settings_restore_afterwards: bool,
 
             init_images: Vec<String>,
             resize_mode: u32,
@@ -305,6 +310,8 @@ impl Client {
                 s_tmin: 0.0,
                 s_noise: 1.0,
                 sampler_index: Sampler::EulerA.to_string(),
+                override_settings: OverrideSettings::default(),
+                override_settings_restore_afterwards: true,
 
                 init_images: vec![],
                 resize_mode: 0,
@@ -348,6 +355,8 @@ impl Client {
                 subseed_strength: b.subseed_strength.unwrap_or(d.subseed_strength),
                 tiling: b.tiling.unwrap_or(d.tiling),
                 width: b.width.unwrap_or(d.width),
+                override_settings: OverrideSettings::from_model(r.base.model.as_ref()),
+                override_settings_restore_afterwards: false,
 
                 init_images: r
                     .images
@@ -372,14 +381,11 @@ impl Client {
             })
         })();
 
-        let model = request.base.model.as_ref().map(|m| m.title.clone());
-
         async move {
             let json_request = json_request?;
             let tiling = json_request.tiling;
             Self::issue_generation_task(
                 client,
-                model,
                 "sdapi/v1/img2img".to_string(),
                 json_request,
                 tiling,
@@ -720,20 +726,10 @@ impl Client {
 impl Client {
     async fn issue_generation_task<R: Serialize + Send + Sync + 'static>(
         client: RequestClient,
-        model_title: Option<String>,
         url: String,
         request: R,
         tiling: bool,
     ) -> Result<GenerationResult> {
-        #[derive(Serialize)]
-        struct OptionsRequest {
-            sd_model_checkpoint: String,
-        }
-
-        let options_request = model_title.map(|s| OptionsRequest {
-            sd_model_checkpoint: s,
-        });
-
         #[derive(Deserialize)]
         struct Response {
             images: Vec<String>,
@@ -766,11 +762,6 @@ impl Client {
             height: u32,
             sampler_name: String,
             steps: u32,
-        }
-
-        if let Some(options_request) = options_request {
-            // Used to set the model if requested
-            client.post("sdapi/v1/options", &options_request).await?;
         }
 
         let response: Response = client.post(&url, &request).await?;
@@ -1395,6 +1386,19 @@ impl RequestClient {
     }
     fn post_raw(&self, endpoint: &str) -> reqwest::RequestBuilder {
         self.client.post(self.url(endpoint))
+    }
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct OverrideSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sd_model_checkpoint: Option<String>,
+}
+impl OverrideSettings {
+    fn from_model(model: Option<&Model>) -> Self {
+        Self {
+            sd_model_checkpoint: model.map(|m| m.title.clone()),
+        }
     }
 }
 
