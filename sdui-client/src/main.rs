@@ -263,7 +263,7 @@ async fn main() -> anyhow::Result<()> {
             } => {
                 let model = get_model_by_index(&models, model).cloned();
                 let task = tokio::task::spawn(client.generate_from_text(
-                    client::TextToImageGenerationRequest {
+                    &client::TextToImageGenerationRequest {
                         base: client::BaseGenerationRequest {
                             prompt,
                             batch_count: count,
@@ -293,7 +293,7 @@ async fn main() -> anyhow::Result<()> {
                 let model = get_model_by_index(&models, model).cloned();
                 let image = image::open(image)?;
                 let task = tokio::task::spawn(client.generate_from_image_and_text(
-                    client::ImageToImageGenerationRequest {
+                    &client::ImageToImageGenerationRequest {
                         base: client::BaseGenerationRequest {
                             prompt,
                             batch_count: count,

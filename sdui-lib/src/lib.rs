@@ -119,7 +119,7 @@ impl Client {
     /// Generates an image from the provided `request`, which contains a prompt.
     pub fn generate_from_text(
         &self,
-        request: TextToImageGenerationRequest,
+        request: &TextToImageGenerationRequest,
     ) -> impl Future<Output = Result<GenerationResult>> {
         let client = self.client.clone();
 
@@ -154,78 +154,80 @@ impl Client {
             firstphase_width: u32,
         }
 
-        async move {
-            let json_request = {
-                let d = Request {
-                    enable_hr: false,
-                    denoising_strength: 0.0,
-                    firstphase_width: 0,
-                    firstphase_height: 0,
-                    prompt: String::new(),
-                    styles: vec![],
-                    seed: -1,
-                    subseed: -1,
-                    subseed_strength: 0.0,
-                    seed_resize_from_h: -1,
-                    seed_resize_from_w: -1,
-                    batch_size: 1,
-                    n_iter: 1,
-                    steps: 20,
-                    cfg_scale: 7.0,
-                    width: 512,
-                    height: 512,
-                    restore_faces: false,
-                    tiling: false,
-                    negative_prompt: String::new(),
-                    eta: 0.0,
-                    s_churn: 0.0,
-                    s_tmax: 0.0,
-                    s_tmin: 0.0,
-                    s_noise: 1.0,
-                    sampler_index: Sampler::EulerA.to_string(),
-                };
-                let r = &request;
-                let b = &request.base;
-                Request {
-                    batch_size: b.batch_size.map(|i| i as i32).unwrap_or(d.batch_size),
-                    cfg_scale: b.cfg_scale.unwrap_or(d.cfg_scale),
-                    denoising_strength: b.denoising_strength.unwrap_or(d.denoising_strength),
-                    enable_hr: r.enable_hr.unwrap_or(d.enable_hr),
-                    eta: b.eta.unwrap_or(d.eta),
-                    firstphase_height: r.firstphase_height.unwrap_or(d.firstphase_height),
-                    firstphase_width: r.firstphase_width.unwrap_or(d.firstphase_width),
-                    height: b.height.unwrap_or(d.height),
-                    n_iter: b.batch_count.unwrap_or(d.n_iter),
-                    negative_prompt: b.negative_prompt.clone().unwrap_or(d.negative_prompt),
-                    prompt: b.prompt.to_owned(),
-                    restore_faces: b.restore_faces.unwrap_or(d.restore_faces),
-                    s_churn: b.s_churn.unwrap_or(d.s_churn),
-                    s_noise: b.s_noise.unwrap_or(d.s_noise),
-                    s_tmax: b.s_tmax.unwrap_or(d.s_tmax),
-                    s_tmin: b.s_tmin.unwrap_or(d.s_tmin),
-                    sampler_index: b.sampler.map(|s| s.to_string()).unwrap_or(d.sampler_index),
-                    seed: b.seed.unwrap_or(d.seed),
-                    seed_resize_from_h: b
-                        .seed_resize_from_h
-                        .map(|i| i as i32)
-                        .unwrap_or(d.seed_resize_from_h),
-                    seed_resize_from_w: b
-                        .seed_resize_from_w
-                        .map(|i| i as i32)
-                        .unwrap_or(d.seed_resize_from_w),
-                    steps: b.steps.unwrap_or(d.steps),
-                    styles: b.styles.clone().unwrap_or(d.styles),
-                    subseed: b.subseed.unwrap_or(d.subseed),
-                    subseed_strength: b.subseed_strength.unwrap_or(d.subseed_strength),
-                    tiling: b.tiling.unwrap_or(d.tiling),
-                    width: b.width.unwrap_or(d.width),
-                }
+        let json_request = {
+            let d = Request {
+                enable_hr: false,
+                denoising_strength: 0.0,
+                firstphase_width: 0,
+                firstphase_height: 0,
+                prompt: String::new(),
+                styles: vec![],
+                seed: -1,
+                subseed: -1,
+                subseed_strength: 0.0,
+                seed_resize_from_h: -1,
+                seed_resize_from_w: -1,
+                batch_size: 1,
+                n_iter: 1,
+                steps: 20,
+                cfg_scale: 7.0,
+                width: 512,
+                height: 512,
+                restore_faces: false,
+                tiling: false,
+                negative_prompt: String::new(),
+                eta: 0.0,
+                s_churn: 0.0,
+                s_tmax: 0.0,
+                s_tmin: 0.0,
+                s_noise: 1.0,
+                sampler_index: Sampler::EulerA.to_string(),
             };
+            let r = &request;
+            let b = &request.base;
+            Request {
+                batch_size: b.batch_size.map(|i| i as i32).unwrap_or(d.batch_size),
+                cfg_scale: b.cfg_scale.unwrap_or(d.cfg_scale),
+                denoising_strength: b.denoising_strength.unwrap_or(d.denoising_strength),
+                enable_hr: r.enable_hr.unwrap_or(d.enable_hr),
+                eta: b.eta.unwrap_or(d.eta),
+                firstphase_height: r.firstphase_height.unwrap_or(d.firstphase_height),
+                firstphase_width: r.firstphase_width.unwrap_or(d.firstphase_width),
+                height: b.height.unwrap_or(d.height),
+                n_iter: b.batch_count.unwrap_or(d.n_iter),
+                negative_prompt: b.negative_prompt.clone().unwrap_or(d.negative_prompt),
+                prompt: b.prompt.to_owned(),
+                restore_faces: b.restore_faces.unwrap_or(d.restore_faces),
+                s_churn: b.s_churn.unwrap_or(d.s_churn),
+                s_noise: b.s_noise.unwrap_or(d.s_noise),
+                s_tmax: b.s_tmax.unwrap_or(d.s_tmax),
+                s_tmin: b.s_tmin.unwrap_or(d.s_tmin),
+                sampler_index: b.sampler.map(|s| s.to_string()).unwrap_or(d.sampler_index),
+                seed: b.seed.unwrap_or(d.seed),
+                seed_resize_from_h: b
+                    .seed_resize_from_h
+                    .map(|i| i as i32)
+                    .unwrap_or(d.seed_resize_from_h),
+                seed_resize_from_w: b
+                    .seed_resize_from_w
+                    .map(|i| i as i32)
+                    .unwrap_or(d.seed_resize_from_w),
+                steps: b.steps.unwrap_or(d.steps),
+                styles: b.styles.clone().unwrap_or(d.styles),
+                subseed: b.subseed.unwrap_or(d.subseed),
+                subseed_strength: b.subseed_strength.unwrap_or(d.subseed_strength),
+                tiling: b.tiling.unwrap_or(d.tiling),
+                width: b.width.unwrap_or(d.width),
+            }
+        };
 
-            let tiling = json_request.tiling;
+        let tiling = json_request.tiling;
+        let model = request.base.model.as_ref().map(|m| m.title.clone());
+
+        async move {
             Self::issue_generation_task(
                 client,
-                request.base.model.as_ref(),
+                model,
                 "sdapi/v1/txt2img".to_string(),
                 json_request,
                 tiling,
@@ -237,7 +239,7 @@ impl Client {
     /// Generates an image from the provided `request`, which contains both an image and a prompt.
     pub fn generate_from_image_and_text(
         &self,
-        request: ImageToImageGenerationRequest,
+        request: &ImageToImageGenerationRequest,
     ) -> impl Future<Output = Result<GenerationResult>> {
         let client = self.client.clone();
 
@@ -278,103 +280,106 @@ impl Client {
             include_init_images: bool,
         }
 
-        async move {
-            let json_request = {
-                let d = Request {
-                    denoising_strength: 0.0,
-                    prompt: String::new(),
-                    styles: vec![],
-                    seed: -1,
-                    subseed: -1,
-                    subseed_strength: 0.0,
-                    seed_resize_from_h: -1,
-                    seed_resize_from_w: -1,
-                    batch_size: 1,
-                    n_iter: 1,
-                    steps: 20,
-                    cfg_scale: 7.0,
-                    width: 512,
-                    height: 512,
-                    restore_faces: false,
-                    tiling: false,
-                    negative_prompt: String::new(),
-                    eta: 0.0,
-                    s_churn: 0.0,
-                    s_tmax: 0.0,
-                    s_tmin: 0.0,
-                    s_noise: 1.0,
-                    sampler_index: Sampler::EulerA.to_string(),
+        let json_request = (|| {
+            let d = Request {
+                denoising_strength: 0.0,
+                prompt: String::new(),
+                styles: vec![],
+                seed: -1,
+                subseed: -1,
+                subseed_strength: 0.0,
+                seed_resize_from_h: -1,
+                seed_resize_from_w: -1,
+                batch_size: 1,
+                n_iter: 1,
+                steps: 20,
+                cfg_scale: 7.0,
+                width: 512,
+                height: 512,
+                restore_faces: false,
+                tiling: false,
+                negative_prompt: String::new(),
+                eta: 0.0,
+                s_churn: 0.0,
+                s_tmax: 0.0,
+                s_tmin: 0.0,
+                s_noise: 1.0,
+                sampler_index: Sampler::EulerA.to_string(),
 
-                    init_images: vec![],
-                    resize_mode: 0,
-                    mask: None,
-                    mask_blur: 4,
-                    inpainting_fill: 0,
-                    inpaint_full_res: true,
-                    inpaint_full_res_padding: 0,
-                    inpainting_mask_invert: 0,
-                    include_init_images: false,
-                };
-                let r = &request;
-                let b = &request.base;
-                Request {
-                    batch_size: b.batch_size.map(|i| i as i32).unwrap_or(d.batch_size),
-                    cfg_scale: b.cfg_scale.unwrap_or(d.cfg_scale),
-                    denoising_strength: b.denoising_strength.unwrap_or(d.denoising_strength),
-                    eta: b.eta.unwrap_or(d.eta),
-                    height: b.height.unwrap_or(d.height),
-                    n_iter: b.batch_count.unwrap_or(d.n_iter),
-                    negative_prompt: b.negative_prompt.clone().unwrap_or(d.negative_prompt),
-                    prompt: b.prompt.to_owned(),
-                    restore_faces: b.restore_faces.unwrap_or(d.restore_faces),
-                    s_churn: b.s_churn.unwrap_or(d.s_churn),
-                    s_noise: b.s_noise.unwrap_or(d.s_noise),
-                    s_tmax: b.s_tmax.unwrap_or(d.s_tmax),
-                    s_tmin: b.s_tmin.unwrap_or(d.s_tmin),
-                    sampler_index: b.sampler.map(|s| s.to_string()).unwrap_or(d.sampler_index),
-                    seed: b.seed.unwrap_or(d.seed),
-                    seed_resize_from_h: b
-                        .seed_resize_from_h
-                        .map(|i| i as i32)
-                        .unwrap_or(d.seed_resize_from_h),
-                    seed_resize_from_w: b
-                        .seed_resize_from_w
-                        .map(|i| i as i32)
-                        .unwrap_or(d.seed_resize_from_w),
-                    steps: b.steps.unwrap_or(d.steps),
-                    styles: b.styles.clone().unwrap_or(d.styles),
-                    subseed: b.subseed.unwrap_or(d.subseed),
-                    subseed_strength: b.subseed_strength.unwrap_or(d.subseed_strength),
-                    tiling: b.tiling.unwrap_or(d.tiling),
-                    width: b.width.unwrap_or(d.width),
-
-                    init_images: r
-                        .images
-                        .iter()
-                        .map(encode_image_to_base64)
-                        .collect::<core::result::Result<Vec<_>, _>>()?,
-                    resize_mode: r.resize_mode.unwrap_or_default().into(),
-                    mask: r.mask.as_ref().map(encode_image_to_base64).transpose()?,
-                    mask_blur: r.mask_blur.unwrap_or(d.mask_blur),
-                    inpainting_fill: match r.inpainting_fill_mode.unwrap_or_default() {
-                        InpaintingFillMode::Fill => 0,
-                        InpaintingFillMode::Original => 1,
-                        InpaintingFillMode::LatentNoise => 2,
-                        InpaintingFillMode::LatentNothing => 3,
-                    },
-                    inpaint_full_res: r.inpaint_full_resolution,
-                    inpaint_full_res_padding: r
-                        .inpaint_full_resolution_padding
-                        .unwrap_or(d.inpaint_full_res_padding),
-                    inpainting_mask_invert: r.inpainting_mask_invert as _,
-                    include_init_images: false,
-                }
+                init_images: vec![],
+                resize_mode: 0,
+                mask: None,
+                mask_blur: 4,
+                inpainting_fill: 0,
+                inpaint_full_res: true,
+                inpaint_full_res_padding: 0,
+                inpainting_mask_invert: 0,
+                include_init_images: false,
             };
+            let r = &request;
+            let b = &request.base;
+            Ok::<_, ClientError>(Request {
+                batch_size: b.batch_size.map(|i| i as i32).unwrap_or(d.batch_size),
+                cfg_scale: b.cfg_scale.unwrap_or(d.cfg_scale),
+                denoising_strength: b.denoising_strength.unwrap_or(d.denoising_strength),
+                eta: b.eta.unwrap_or(d.eta),
+                height: b.height.unwrap_or(d.height),
+                n_iter: b.batch_count.unwrap_or(d.n_iter),
+                negative_prompt: b.negative_prompt.clone().unwrap_or(d.negative_prompt),
+                prompt: b.prompt.to_owned(),
+                restore_faces: b.restore_faces.unwrap_or(d.restore_faces),
+                s_churn: b.s_churn.unwrap_or(d.s_churn),
+                s_noise: b.s_noise.unwrap_or(d.s_noise),
+                s_tmax: b.s_tmax.unwrap_or(d.s_tmax),
+                s_tmin: b.s_tmin.unwrap_or(d.s_tmin),
+                sampler_index: b.sampler.map(|s| s.to_string()).unwrap_or(d.sampler_index),
+                seed: b.seed.unwrap_or(d.seed),
+                seed_resize_from_h: b
+                    .seed_resize_from_h
+                    .map(|i| i as i32)
+                    .unwrap_or(d.seed_resize_from_h),
+                seed_resize_from_w: b
+                    .seed_resize_from_w
+                    .map(|i| i as i32)
+                    .unwrap_or(d.seed_resize_from_w),
+                steps: b.steps.unwrap_or(d.steps),
+                styles: b.styles.clone().unwrap_or(d.styles),
+                subseed: b.subseed.unwrap_or(d.subseed),
+                subseed_strength: b.subseed_strength.unwrap_or(d.subseed_strength),
+                tiling: b.tiling.unwrap_or(d.tiling),
+                width: b.width.unwrap_or(d.width),
 
+                init_images: r
+                    .images
+                    .iter()
+                    .map(encode_image_to_base64)
+                    .collect::<core::result::Result<Vec<_>, _>>()?,
+                resize_mode: r.resize_mode.unwrap_or_default().into(),
+                mask: r.mask.as_ref().map(encode_image_to_base64).transpose()?,
+                mask_blur: r.mask_blur.unwrap_or(d.mask_blur),
+                inpainting_fill: match r.inpainting_fill_mode.unwrap_or_default() {
+                    InpaintingFillMode::Fill => 0,
+                    InpaintingFillMode::Original => 1,
+                    InpaintingFillMode::LatentNoise => 2,
+                    InpaintingFillMode::LatentNothing => 3,
+                },
+                inpaint_full_res: r.inpaint_full_resolution,
+                inpaint_full_res_padding: r
+                    .inpaint_full_resolution_padding
+                    .unwrap_or(d.inpaint_full_res_padding),
+                inpainting_mask_invert: r.inpainting_mask_invert as _,
+                include_init_images: false,
+            })
+        })();
+
+        let model = request.base.model.as_ref().map(|m| m.title.clone());
+
+        async move {
+            let json_request = json_request?;
             let tiling = json_request.tiling;
             Self::issue_generation_task(
                 client,
-                request.base.model.as_ref(),
+                model,
                 "sdapi/v1/img2img".to_string(),
                 json_request,
                 tiling,
@@ -715,7 +720,7 @@ impl Client {
 impl Client {
     async fn issue_generation_task<R: Serialize + Send + Sync + 'static>(
         client: RequestClient,
-        model: Option<&Model>,
+        model_title: Option<String>,
         url: String,
         request: R,
         tiling: bool,
@@ -725,8 +730,8 @@ impl Client {
             sd_model_checkpoint: String,
         }
 
-        let options_request = model.map(|s| OptionsRequest {
-            sd_model_checkpoint: s.title.clone(),
+        let options_request = model_title.map(|s| OptionsRequest {
+            sd_model_checkpoint: s,
         });
 
         #[derive(Deserialize)]
