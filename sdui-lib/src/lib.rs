@@ -1085,7 +1085,7 @@ pub struct PostprocessRequest {
 macro_rules! define_user_friendly_enum {
     ($enum_name:ident, $doc:literal, {$(($name:ident, $friendly_name:literal)),*}) => {
         #[doc = $doc]
-        #[derive(Clone, Copy, Serialize, Deserialize, PartialEq)]
+        #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
         pub enum $enum_name {
             $(
                 #[doc = $friendly_name]
