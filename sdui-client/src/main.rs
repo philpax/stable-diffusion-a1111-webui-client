@@ -355,7 +355,11 @@ async fn main() -> anyhow::Result<()> {
                 let result = client.png_info(&std::fs::read(image)?).await?;
                 println!("result: {}", result);
             }
-            Command::Embeddings => list_unordered_print("Embeddings", client.embeddings().await?),
+            Command::Embeddings => {
+                let embeddings = client.embeddings().await?;
+                list_unordered_print("Loaded", embeddings.loaded);
+                list_unordered_print("Skipped", embeddings.skipped);
+            }
             Command::Options => println!("Options: {:?}", client.options().await?),
             Command::Samplers => list_unordered_print("Samplers", client.samplers().await?),
             Command::Upscalers => list_unordered_print("Upscalers", client.upscalers().await?),

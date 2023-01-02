@@ -79,19 +79,16 @@ pub enum Authentication<'a> {
 /// Interface to the web UI.
 pub struct Client {
     client: RequestClient,
-    config: Option<Config>,
 }
 impl Client {
     /// Creates a new `Client` and authenticates to the web UI.
     pub async fn new(url: &str, authentication: Authentication<'_>) -> Result<Self> {
         let mut client = RequestClient::new(url).await?;
 
-        let mut ui_auth = true;
         match authentication {
             Authentication::None => {}
             Authentication::ApiAuth(username, password) => {
                 client.set_authentication_token(base64::encode(format!("{username}:{password}")));
-                ui_auth = false;
             }
             Authentication::GradioAuth(username, password) => {
                 client
@@ -105,15 +102,7 @@ impl Client {
             }
         }
 
-        // The config is only available if there is no authentication or the authentication
-        // occurred with Gradio; otherwise, API auth is insufficient to retrieve the config
-        let config = if ui_auth {
-            Some(Config::new(&client).await?)
-        } else {
-            None
-        };
-
-        Ok(Self { client, config })
+        Ok(Self { client })
     }
 
     /// Generates an image from the provided `request`, which contains a prompt.
@@ -544,12 +533,45 @@ impl Client {
     }
 
     /// Get the embeddings
-    pub async fn embeddings(&self) -> Result<Vec<String>> {
-        if let Some(config) = &self.config {
-            config.embeddings()
-        } else {
-            Err(ClientError::ConfigNotAvailable)
+    pub async fn embeddings(&self) -> Result<Embeddings> {
+        #[derive(Deserialize)]
+        struct EmbeddingRaw {
+            step: Option<u32>,
+            sd_checkpoint: Option<String>,
+            sd_checkpoint_name: Option<String>,
+            shape: u32,
+            vectors: u32,
         }
+
+        #[derive(Deserialize)]
+        struct ResponseRaw {
+            loaded: HashMap<String, EmbeddingRaw>,
+            skipped: HashMap<String, EmbeddingRaw>,
+        }
+
+        fn convert_embeddings(hm: HashMap<String, EmbeddingRaw>) -> HashMap<String, Embedding> {
+            hm.into_iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        Embedding {
+                            step: v.step,
+                            sd_checkpoint: v.sd_checkpoint,
+                            sd_checkpoint_name: v.sd_checkpoint_name,
+                            shape: v.shape,
+                            vectors: v.vectors,
+                        },
+                    )
+                })
+                .collect()
+        }
+
+        let response: ResponseRaw = self.client.get("sdapi/v1/embeddings").await?;
+
+        Ok(Embeddings {
+            loaded: convert_embeddings(response.loaded),
+            skipped: convert_embeddings(response.skipped),
+        })
     }
 
     /// Get the options
@@ -1245,85 +1267,128 @@ pub struct Artist {
     pub category: String,
 }
 
-#[derive(Debug)]
-enum ConfigComponent {
-    Dropdown { choices: Vec<String>, id: String },
-    Radio { choices: Vec<String>, id: String },
+/// A textual inversion embedding
+#[derive(Debug, Clone)]
+pub struct Embedding {
+    /// The number of steps that were used to train this embedding, if available
+    pub step: Option<u32>,
+    /// The hash of the checkpoint this embedding was trained on, if available
+    pub sd_checkpoint: Option<String>,
+    /// The name of the checkpoint this embedding was trained on, if available
+    ///
+    /// Note that this is the name that was used by the trainer; for a stable identifier, use [sd_checkpoint] instead
+    pub sd_checkpoint_name: Option<String>,
+    /// The length of each individual vector in the embedding
+    pub shape: u32,
+    /// The number of vectors in the embedding
+    pub vectors: u32,
 }
 
-/// The configuration for the Web UI.
-#[derive(Debug)]
-struct Config(HashMap<u32, ConfigComponent>);
-impl Config {
-    async fn new(client: &RequestClient) -> Result<Self> {
-        Ok(Self(
-            client
-                .get::<HashMap<String, serde_json::Value>>("config")
-                .await?
-                .get("components")
-                .ok_or_else(|| ClientError::invalid_response("components"))?
-                .as_array()
-                .ok_or_else(|| ClientError::invalid_response("components to be an array"))?
-                .iter()
-                .filter_map(|v| v.as_object())
-                .filter_map(|o| {
-                    let id = o.get("id")?.as_u64()? as u32;
-                    let comp_type = o.get("type")?.as_str()?;
-                    let props = o.get("props")?.as_object()?;
-                    match comp_type {
-                        "dropdown" => Some((
-                            id,
-                            ConfigComponent::Dropdown {
-                                choices: extract_string_array(props.get("choices")?)?,
-                                id: props.get("elem_id")?.as_str()?.to_owned(),
-                            },
-                        )),
-                        "radio" => Some((
-                            id,
-                            ConfigComponent::Radio {
-                                choices: extract_string_array(props.get("choices")?)?,
-                                id: props.get("elem_id")?.as_str()?.to_owned(),
-                            },
-                        )),
-                        _ => None,
+/// All available textual inversion embeddings
+#[derive(Debug, Clone)]
+pub struct Embeddings {
+    /// Embeddings loaded for the current model
+    pub loaded: HashMap<String, Embedding>,
+    /// Embeddings skipped for the current model (likely due to architecture incompatibility)
+    pub skipped: HashMap<String, Embedding>,
+}
+
+#[allow(dead_code)]
+mod config {
+    use crate::{ClientError, RequestClient, Result};
+    use std::collections::HashMap;
+
+    #[derive(Debug)]
+    enum ConfigComponent {
+        Dropdown { choices: Vec<String>, id: String },
+        Radio { choices: Vec<String>, id: String },
+    }
+
+    /// The top-level Gradio configuration for the Web UI.
+    ///
+    /// Used to get things that aren't in the API.
+    #[derive(Debug)]
+    struct Config(HashMap<u32, ConfigComponent>);
+    impl Config {
+        async fn new(client: &RequestClient) -> Result<Self> {
+            Ok(Self(
+                client
+                    .get::<HashMap<String, serde_json::Value>>("config")
+                    .await?
+                    .get("components")
+                    .ok_or_else(|| ClientError::invalid_response("components"))?
+                    .as_array()
+                    .ok_or_else(|| ClientError::invalid_response("components to be an array"))?
+                    .iter()
+                    .filter_map(|v| v.as_object())
+                    .filter_map(|o| {
+                        let id = o.get("id")?.as_u64()? as u32;
+                        let comp_type = o.get("type")?.as_str()?;
+                        let props = o.get("props")?.as_object()?;
+                        match comp_type {
+                            "dropdown" => Some((
+                                id,
+                                ConfigComponent::Dropdown {
+                                    choices: extract_string_array(props.get("choices")?)?,
+                                    id: props.get("elem_id")?.as_str()?.to_owned(),
+                                },
+                            )),
+                            "radio" => Some((
+                                id,
+                                ConfigComponent::Radio {
+                                    choices: extract_string_array(props.get("choices")?)?,
+                                    id: props.get("elem_id")?.as_str()?.to_owned(),
+                                },
+                            )),
+                            _ => None,
+                        }
+                    })
+                    .collect(),
+            ))
+        }
+
+        /// All of the embeddings available.
+        fn embeddings(&self) -> Result<Vec<String>> {
+            self.get_dropdown("train_embedding")
+        }
+
+        fn values(&self) -> impl Iterator<Item = &ConfigComponent> {
+            self.0.values()
+        }
+        fn get_dropdown(&self, target_id: &str) -> Result<Vec<String>> {
+            self.values()
+                .find_map(|comp| match comp {
+                    ConfigComponent::Dropdown { id, choices, .. } if id == target_id => {
+                        Some(choices.clone())
                     }
+                    _ => None,
                 })
+                .ok_or_else(|| {
+                    ClientError::invalid_response(&format!("no {target_id} dropdown component"))
+                })
+        }
+        fn get_radio(&self, target_id: &str) -> Result<Vec<String>> {
+            self.values()
+                .find_map(|comp| match comp {
+                    ConfigComponent::Radio { id, choices, .. } if id == target_id => {
+                        Some(choices.clone())
+                    }
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    ClientError::invalid_response(&format!("no {target_id} radio component"))
+                })
+        }
+    }
+
+    fn extract_string_array(value: &serde_json::Value) -> Option<Vec<String>> {
+        Some(
+            value
+                .as_array()?
+                .iter()
+                .flat_map(|s| Some(s.as_str()?.to_owned()))
                 .collect(),
-        ))
-    }
-
-    /// All of the embeddings available.
-    fn embeddings(&self) -> Result<Vec<String>> {
-        self.get_dropdown("train_embedding")
-    }
-
-    fn values(&self) -> impl Iterator<Item = &ConfigComponent> {
-        self.0.values()
-    }
-    fn get_dropdown(&self, target_id: &str) -> Result<Vec<String>> {
-        self.values()
-            .find_map(|comp| match comp {
-                ConfigComponent::Dropdown { id, choices, .. } if id == target_id => {
-                    Some(choices.clone())
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                ClientError::invalid_response(&format!("no {target_id} dropdown component"))
-            })
-    }
-    #[allow(dead_code)]
-    fn get_radio(&self, target_id: &str) -> Result<Vec<String>> {
-        self.values()
-            .find_map(|comp| match comp {
-                ConfigComponent::Radio { id, choices, .. } if id == target_id => {
-                    Some(choices.clone())
-                }
-                _ => None,
-            })
-            .ok_or_else(|| {
-                ClientError::invalid_response(&format!("no {target_id} radio component"))
-            })
+        )
     }
 }
 
@@ -1413,14 +1478,4 @@ impl OverrideSettings {
             sd_model_checkpoint: model.map(|m| m.title.clone()),
         }
     }
-}
-
-fn extract_string_array(value: &serde_json::Value) -> Option<Vec<String>> {
-    Some(
-        value
-            .as_array()?
-            .iter()
-            .flat_map(|s| Some(s.as_str()?.to_owned()))
-            .collect(),
-    )
 }
