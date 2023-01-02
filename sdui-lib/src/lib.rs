@@ -1292,6 +1292,12 @@ pub struct Embeddings {
     /// Embeddings skipped for the current model (likely due to architecture incompatibility)
     pub skipped: HashMap<String, Embedding>,
 }
+impl Embeddings {
+    /// Iterator over all embeddings available, including currently unloaded ones
+    pub fn all(&self) -> impl Iterator<Item = (&String, &Embedding)> {
+        self.loaded.iter().chain(self.skipped.iter())
+    }
+}
 
 #[allow(dead_code)]
 mod config {
