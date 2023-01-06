@@ -430,8 +430,8 @@ async fn save_generation_result(
     }
     let result = task.await??;
     println!("info: {:?}", result.info);
-    for (i, image) in result.images.into_iter().enumerate() {
-        image.save(format!("output_{i}.png"))?;
+    for (i, image) in result.pngs.into_iter().enumerate() {
+        std::fs::write(format!("output_{i}.png"), image)?;
     }
 
     Ok(())

@@ -6,7 +6,7 @@ use std::{collections::HashMap, future::Future};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
-pub use image::DynamicImage;
+pub use image;
 
 /// All potential errors that the client can produce.
 #[derive(Error, Debug)]
@@ -422,9 +422,9 @@ impl Client {
     /// Upscales the given `image` and applies additional (optional) post-processing.
     pub async fn postprocess(
         &self,
-        image: &DynamicImage,
+        image: &image::DynamicImage,
         request: &PostprocessRequest,
-    ) -> Result<DynamicImage> {
+    ) -> Result<image::DynamicImage> {
         #[derive(Serialize)]
         struct RequestRaw<'a> {
             image: &'a str,
@@ -476,7 +476,7 @@ impl Client {
     /// Interrogates the given `image` with the `interrogator` to generate a caption.
     pub async fn interrogate(
         &self,
-        image: &DynamicImage,
+        image: &image::DynamicImage,
         interrogator: Interrogator,
     ) -> Result<String> {
         #[derive(Serialize)]
@@ -798,10 +798,10 @@ impl Client {
         }
 
         let response: Response = client.post(&url, &request).await?;
-        let images = response
+        let pngs = response
             .images
             .iter()
-            .map(|b64| decode_image_from_base64(b64.as_str()))
+            .map(|b64| base64::decode(b64.as_str()).map_err(|e| ClientError::from(e)))
             .collect::<Result<Vec<_>>>()?;
         let info = {
             let raw: InfoResponse = serde_json::from_str(&response.info)?;
@@ -841,15 +841,15 @@ impl Client {
             }
         };
 
-        Ok(GenerationResult { images, info })
+        Ok(GenerationResult { pngs, info })
     }
 }
 
-fn decode_image_from_base64(b64: &str) -> Result<DynamicImage> {
+fn decode_image_from_base64(b64: &str) -> Result<image::DynamicImage> {
     Ok(image::load_from_memory(&base64::decode(b64)?)?)
 }
 
-fn encode_image_to_base64(image: &DynamicImage) -> image::ImageResult<String> {
+fn encode_image_to_base64(image: &image::DynamicImage) -> image::ImageResult<String> {
     let mut bytes: Vec<u8> = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut bytes);
     image.write_to(&mut cursor, image::ImageOutputFormat::Png)?;
@@ -866,7 +866,7 @@ pub struct GenerationProgress {
     /// How much of the generation is complete, from 0 to 1
     pub progress_factor: f32,
     /// The current image being generated, if available.
-    pub current_image: Option<DynamicImage>,
+    pub current_image: Option<image::DynamicImage>,
     /// The timestamp that the current job was started. Can be used to disambiguate between jobs.
     pub job_timestamp: Option<chrono::DateTime<chrono::Local>>,
 }
@@ -971,13 +971,13 @@ pub struct ImageToImageGenerationRequest {
     pub base: BaseGenerationRequest,
 
     /// The images to alter.
-    pub images: Vec<DynamicImage>,
+    pub images: Vec<image::DynamicImage>,
 
     /// How the image will be resized to match the generation resolution
     pub resize_mode: Option<ResizeMode>,
 
     /// The mask to apply
-    pub mask: Option<DynamicImage>,
+    pub mask: Option<image::DynamicImage>,
 
     /// The amount to blur the mask
     pub mask_blur: Option<u32>,
@@ -998,10 +998,24 @@ pub struct ImageToImageGenerationRequest {
 
 /// The result of the generation.
 pub struct GenerationResult {
-    /// The images produced by the generator.
-    pub images: Vec<DynamicImage>,
+    /// The images produced by the generator, as PNG byte arrays.
+    ///
+    /// Note that these contain any information included by the generators,
+    /// including the PNG info.
+    pub pngs: Vec<Vec<u8>>,
     /// The information associated with this generation.
     pub info: GenerationInfo,
+}
+impl GenerationResult {
+    /// Converts [pngs] to [image::DynamicImage]s.
+    ///
+    /// Note that this conversion will lose PNG info and any other information embedded in the PNGs.
+    pub fn images(&self) -> Result<Vec<image::DynamicImage>> {
+        self.pngs
+            .iter()
+            .map(|p| image::load_from_memory(&p).map_err(|e| ClientError::from(e)))
+            .collect()
+    }
 }
 
 /// The information associated with a generation.
