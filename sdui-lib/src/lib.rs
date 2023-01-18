@@ -643,7 +643,9 @@ impl Client {
         struct ModelRaw {
             config: String,
             filename: String,
-            hash: String,
+            hash: Option<String>,
+            #[serde(default)]
+            sha256: Option<String>,
             model_name: String,
             title: String,
         }
@@ -656,6 +658,8 @@ impl Client {
                     .map(|r| Model {
                         title: r.title,
                         name: r.model_name,
+                        hash_short: r.hash,
+                        hash_sha256: r.sha256,
                     })
                     .collect()
             })
@@ -1259,6 +1263,10 @@ pub struct Model {
     pub title: String,
     /// Name of the model
     pub name: String,
+    /// Short hash of the model, if available
+    pub hash_short: Option<String>,
+    /// Long SHA256 hash of the model, if available
+    pub hash_sha256: Option<String>,
 }
 
 /// Prompt style
