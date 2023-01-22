@@ -581,7 +581,6 @@ impl Client {
             s_churn: f32,
             s_noise: f32,
             s_tmin: f32,
-            sd_hypernetwork: String,
             sd_model_checkpoint: String,
         }
 
@@ -589,7 +588,6 @@ impl Client {
             .get::<OptionsRaw>("sdapi/v1/options")
             .await
             .map(|r| Options {
-                hypernetwork: r.sd_hypernetwork,
                 model: r.sd_model_checkpoint,
                 s_churn: r.s_churn,
                 s_noise: r.s_noise,
@@ -1243,8 +1241,6 @@ impl Default for Upscaler {
 /// The currently set options for the UI
 #[derive(Debug, Clone)]
 pub struct Options {
-    /// Current hypernetwork
-    pub hypernetwork: String,
     /// Current model
     pub model: String,
 
