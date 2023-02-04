@@ -639,7 +639,7 @@ impl Client {
     pub async fn models(&self) -> Result<Vec<Model>> {
         #[derive(Serialize, Deserialize)]
         struct ModelRaw {
-            config: String,
+            config: Option<String>,
             filename: String,
             hash: Option<String>,
             #[serde(default)]
