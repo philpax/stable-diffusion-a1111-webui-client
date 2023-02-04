@@ -1069,7 +1069,8 @@ pub struct GenerationInfo {
     pub is_using_inpainting_conditioning: bool,
     /// When the job was run
     pub job_timestamp: chrono::DateTime<chrono::Local>,
-    /// The hash of the model in use
+    /// The hash of the model in use. Note that this is the *short* hash,
+    /// not the long hash.
     pub model_hash: String,
 }
 
