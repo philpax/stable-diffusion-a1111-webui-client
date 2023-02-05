@@ -54,7 +54,12 @@ pub enum ClientError {
     TokioJoinError(#[from] tokio::task::JoinError),
     /// Error returned by `chrono` when trying to parse a datetime.
     #[error("chrono parse error")]
-    ChronoParseError(#[from] chrono::format::ParseError),
+    ChronoParseError {
+        /// The timestamp that failed to parse
+        timestamp: String,
+        /// The error returned by `chrono`
+        error: chrono::format::ParseError,
+    },
 }
 impl ClientError {
     fn invalid_response(expected: &str) -> Self {
@@ -413,7 +418,14 @@ impl Client {
                 .transpose()?,
             job_timestamp: response
                 .state
-                .map(|s| chrono::NaiveDateTime::parse_from_str(&s.job_timestamp, "%Y%m%d%H%M%S"))
+                .map(|s| {
+                    chrono::NaiveDateTime::parse_from_str(&s.job_timestamp, "%Y%m%d%H%M%S").map_err(
+                        |error| ClientError::ChronoParseError {
+                            timestamp: s.job_timestamp.clone(),
+                            error,
+                        },
+                    )
+                })
                 .transpose()?
                 .map(|dt| dt.and_local_timezone(chrono::Local).unwrap()),
         })
@@ -836,7 +848,11 @@ impl Client {
                 job_timestamp: chrono::NaiveDateTime::parse_from_str(
                     &raw.job_timestamp,
                     "%Y%m%d%H%M%S",
-                )?
+                )
+                .map_err(|error| ClientError::ChronoParseError {
+                    timestamp: raw.job_timestamp.clone(),
+                    error,
+                })?
                 .and_local_timezone(chrono::Local)
                 .unwrap(),
                 model_hash: raw.sd_model_hash,
