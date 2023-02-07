@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, future::Future};
 
+use data_encoding::BASE64;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
@@ -45,7 +46,7 @@ pub enum ClientError {
     SerdeJsonError(#[from] serde_json::Error),
     /// Error returned by `base64`.
     #[error("base64 decode error")]
-    Base64DecodeError(#[from] base64::DecodeError),
+    Base64DecodeError(#[from] data_encoding::DecodeError),
     /// Error returned by `image`.
     #[error("image error")]
     ImageError(#[from] image::ImageError),
@@ -93,7 +94,9 @@ impl Client {
         match authentication {
             Authentication::None => {}
             Authentication::ApiAuth(username, password) => {
-                client.set_authentication_token(base64::encode(format!("{username}:{password}")));
+                client.set_authentication_token(
+                    BASE64.encode(format!("{username}:{password}").as_bytes()),
+                );
             }
             Authentication::GradioAuth(username, password) => {
                 client
@@ -536,7 +539,7 @@ impl Client {
             .post(
                 "sdapi/v1/png-info",
                 &RequestRaw {
-                    image: &base64::encode(image_bytes),
+                    image: &BASE64.encode(image_bytes),
                 },
             )
             .await?;
@@ -815,7 +818,11 @@ impl Client {
         let pngs = response
             .images
             .iter()
-            .map(|b64| base64::decode(b64.as_str()).map_err(|e| ClientError::from(e)))
+            .map(|b64| {
+                BASE64
+                    .decode(b64.as_bytes())
+                    .map_err(|e| ClientError::from(e))
+            })
             .collect::<Result<Vec<_>>>()?;
         let info = {
             let raw: InfoResponse = serde_json::from_str(&response.info)?;
@@ -864,14 +871,14 @@ impl Client {
 }
 
 fn decode_image_from_base64(b64: &str) -> Result<image::DynamicImage> {
-    Ok(image::load_from_memory(&base64::decode(b64)?)?)
+    Ok(image::load_from_memory(&BASE64.decode(b64.as_bytes())?)?)
 }
 
 fn encode_image_to_base64(image: &image::DynamicImage) -> image::ImageResult<String> {
     let mut bytes: Vec<u8> = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut bytes);
     image.write_to(&mut cursor, image::ImageOutputFormat::Png)?;
-    Ok(base64::encode(bytes))
+    Ok(BASE64.encode(&bytes))
 }
 
 /// How much of the generation is complete.
