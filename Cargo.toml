@@ -4,7 +4,7 @@ edition = "2021"
 license = "MIT"
 name = "stable-diffusion-a1111-webui-client"
 repository = "https://github.com/philpax/stable-diffusion-a1111-webui-client"
-version = "0.1.0"
+version = "0.1.1"
 
 [dependencies]
 chrono = "0.4.23"
